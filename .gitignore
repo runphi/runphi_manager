@@ -1,0 +1,8 @@
+build/*
+!build/.void
+.wget-hsts
+.bash_history
+.lesshst
+.viminfo
+.vscode
+rust_runphi/target/*

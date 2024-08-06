@@ -1,0 +1,22 @@
+[package]
+name = "runphi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies.clap]
+version = "4.1.6"
+default-features = false
+features = ["std", "suggestions", "derive", "cargo", "help", "usage", "error-context"]
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+psutil = "3.3.0"
+chrono = "0.4.19"
+nix = "0.20.1"
+regex = "1.5.4"
+liboci-cli = { path = "../liboci-cli" }
+backend = { path = "../backend_jailhouse" }
+f2b = { path = "../frontend_to_backend" }

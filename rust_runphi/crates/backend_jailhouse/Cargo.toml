@@ -1,0 +1,14 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+psutil = "3.3.0"
+chrono = "0.4.19"
+nix = "0.20.1"
+regex = "1.5.4"
+f2b = { path = "../frontend_to_backend" }
