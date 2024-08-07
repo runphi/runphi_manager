@@ -69,69 +69,9 @@ Flow:
             With jailhouse no-linux, the create-guest call jailhouse cell create passing the cellfile, later jailhouse cell load and jailhouse cell create
 
 
-## Usage
+## Demo
 
-#### qemu-jailhouse environment
-
-**Pre-requisite**: assume environment ``qemu-jailhouse`` is properly built by running ``configure_everything.sh`` script (see [here](https://dessert.unina.it:8088/runphi/runphi#how-to-use-the-repository)).
-
-##### From host machine
-```
-# cd /PATH_TO_RUNPHI/runphi
-
-## setup bridge (HOST)-tap (QEMU) interconnection. Check nternal params to change hardcoded IP, subnet, etc.
-# ./scripts/qemu/setup_bridge_tap.sh
-
-## start QEMU VM
-./scripts/qemu/start_qemu.sh
-
-## setup QEMU VM as worker node in a k8s cluster. Check internal params to change control plane IP, QEMU IP, etc.
-# ./scripts/orchestration/cluster_setup.sh
-
-## Get the latest runphi binary and copy from host machine into QEMU VM (assume root user and 192.0.3.76 IP, change accordingly)
-
-# cd /PATH_TO_RUNPHI/runPHI/rust_runphi
-# ./compile_rust.sh
-# scp /PATH_TO_RUNPHI/runPHI/rust_runphi/target/aarch64-unknown-linux-gnu/release/runphi root@192.0.3.76:/root/.
-```
-
-##### From QEMU VM (k8s worker node)
-```
-## Start Jailhouse and root cell (for Zephyr DEMO the root cell is in jailhouse/configs/arm64/qemu-arm64-zephyr-rootcell.cell)
-## Check all available .cell file in jailhouse/configs dir
-
-# cd scripts_jailhouse_qemu/
-# sh start_jailhouse_net.sh qemu-arm64-zephyr-rootcell.cell
-```
-
-##### From control plane node
-
-Create pod .yaml manifest (e.g., ``helloworld.yaml``) as in the following:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: hello
-spec:
-  terminationGracePeriodSeconds: 0
-  containers:
-
-  - name: zephyr
-    image: dessertunina/helloworld:1.0
-    # Guarantee that we pull again the refreshed image since the tag 1.0 is not latest
-    # latest guarantees always the pull of the most recent image. The others do not
-    imagePullPolicy: Always
-
-  nodeName: buildroot
-```
-
-The image set must be built following the instrucitons in this [repo](https://dessert.unina.it:8088/runphi/partitioned_container_demos). Then apply/delete manifest to start/remove partitioned container:
-
-```
-# kubectl apply -f helloworld.yaml
-# kubectl delete -f helloworld.yaml
-```
+**qemu-jailhouse** environment: refer to this [README](https://dessert.unina.it:8088/runphi/partitioned_container_demos/-/tree/main/demos).
 
 ## Issues and TODO
 - the shim must be modified to incorporate caronte, and the management of the shim must be integrated (atm kill kills the shim)
