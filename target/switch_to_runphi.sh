@@ -18,6 +18,8 @@ echo "Three card games with runc..."
 current_runtime_name=$(${CWD}/get_current_container_runtime.sh|awk '{print $1}')
 if [[ "${current_runtime_name}" == "runc" ]]; then
 	echo "Current runtime is ${current_runtime_name}...backup it"
+	mkdir -p /usr/local/sbin/
+
 	cp /usr/bin/runc /usr/local/sbin/runc_vanilla
 	echo "runc backed up"
 
