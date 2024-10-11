@@ -7,7 +7,7 @@ use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use std::error::Error;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
@@ -120,7 +120,8 @@ fn extract_memory_size(configuration: &str) -> io::Result<(u64, u64)> {
     Ok((phys_start, end_address))
 }
 
-fn extract_bdf(configuration: &str) -> i64 {
+// Version 1 - causes bug
+/* fn extract_bdf(configuration: &str) -> i64 {
     // Find the second PCI device entry
     let networking_device_pattern = r#"{ /* IVSHMEM 00:01.0 (networking) */"#;
     if let Some(start_index) = configuration.find(networking_device_pattern) {
@@ -142,6 +143,25 @@ fn extract_bdf(configuration: &str) -> i64 {
         }
     }
     -1 // Default value if BDF extraction fails
+} */
+// Version 2, more streamlined, it just searches for the second occurrence of the .bdf field and takes the id
+fn extract_bdf(configuration: &str) -> i64 {
+    let mut bdf_count = 0;
+
+    for line in configuration.lines() {
+        if line.trim_start().starts_with(".bdf =") {
+            bdf_count += 1;
+            if bdf_count == 2 {
+                if let Some(bdf_value) = line.split_whitespace().nth(2) {
+                    if let Ok(bdf) = bdf_value.parse::<i64>() {
+                        return bdf;
+                    }
+                }
+            }
+        }
+    }
+
+    -1 // Return -1 if the second .bdf line is not found or if parsing fails
 }
 
 //Support function to deallocate a pci device by removing its bdf from the file
@@ -201,7 +221,8 @@ fn append_message_with_time(message: &str) -> Result<(), Box<dyn Error>> {
 }
 
 // Function to restore memory segment by adding phys_start and end_address to the free_segments.txt file
-fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
+// Version 1, doesn't unify the different used memory segments, leading to bugs
+/* fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
     let path = Path::new(WORKPATH).join(FREE_SEGMENTS_FILE);
     let mut file = OpenOptions::new()
         .create(true)
@@ -212,6 +233,73 @@ fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
     writeln!(file, "0x{:X}, 0x{:X}", phys_start, end_address)?;
 
     Ok(())
+} */
+
+// Function to restore memory segment by restoring free_segments.txt file
+// Version 2 also aggregates all contiguous memory segments 
+fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
+    let path = Path::new(WORKPATH).join(FREE_SEGMENTS_FILE);
+    
+    // Read the existing entries
+    let mut segments = Vec::new();
+    if let Ok(file) = File::open(&path) {
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            let line = line?;
+            if let Some((start, end)) = parse_segment(&line) {
+                segments.push((start, end));
+            }
+        }
+    }
+
+    // Add the new segment
+    segments.push((phys_start, end_address));
+
+    // Remove segments where start == end
+    segments.retain(|&(start, end)| start != end);
+
+    // Sort segments by start address
+    segments.sort_unstable_by_key(|&(start, _)| start);
+
+    // Merge contiguous segments
+    let mut merged_segments = Vec::new();
+    if let Some(mut current) = segments.first().cloned() {
+        for &(start, end) in &segments[1..] {
+            if current.1 == start {
+                // Merge contiguous segments
+                current.1 = end;
+            } else {
+                merged_segments.push(current);
+                current = (start, end);
+            }
+        }
+        merged_segments.push(current);
+    }
+
+    // Write the updated segments back to the file
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&path)?;
+
+    for (start, end) in merged_segments {
+        writeln!(file, "0x{:X}, 0x{:X}", start, end)?;
+    }
+
+    Ok(())
+}
+
+// Support function to restore_memory_segment
+fn parse_segment(line: &str) -> Option<(u64, u64)> {
+    let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+    if parts.len() == 2 {
+        if let (Ok(start), Ok(end)) = (u64::from_str_radix(parts[0].trim_start_matches("0x"), 16), 
+                                       u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)) {
+            return Some((start, end));
+        }
+    }
+    None
 }
 
 pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
