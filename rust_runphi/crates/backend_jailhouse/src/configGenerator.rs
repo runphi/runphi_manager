@@ -13,6 +13,7 @@ use f2b;
 pub mod boot;
 pub mod communication;
 pub mod cpu;
+pub mod fpga;
 pub mod device;
 pub mod mem;
 pub mod network;
@@ -27,6 +28,7 @@ const WORKPATH: &str = "/usr/share/runPHI";
 pub struct Backendconfig {
     pub conf: String,
     pub cpus: u8,
+    pub fpga_regions: u8,
     pub conffile: String,
     pub net: String,
 }
@@ -37,6 +39,7 @@ impl Backendconfig {
         Self {
             conf: String::new(),
             cpus: 0,
+            fpga_regions: 0,
             conffile: String::new(),
             net: String::new(),
         }
@@ -107,6 +110,12 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     /* let _mem_res = fc.jsonconfig["linux"]["resources"]["memory"]["reservation"] //Domain memory in MB, (--memory-reservation="")
     .as_u64() // Assuming memory values are in unsigned integers
     .unwrap_or(512); // Set default value to 512 MB if the value is missing */
+
+    //before requesting memory, let's get info about the bitstreams
+    let _ = fpga::fpgaconf(fc, &mut c, &mut config.accelerator);
+    let _ = append_message_with_time(&format!("Finished fpga config")); //TIME
+    let _ = append_message_with_time(&format!("accelerator.bitstream: {}",config.accelerator.bitstream)); //TIME
+
 
     let mem_request = fc.jsonconfig["linux"]["resources"]["memory"]["limit"] //Maximum domain memory in MB, (-m, --memory="")
         .as_u64() // Assuming memory values are in unsigned integers
@@ -274,9 +283,12 @@ fn confighelperend(
 
     // Compile the config file
     //TODO: handle compilation error
-    let _ = std::process::Command::new("make")
+    let output = std::process::Command::new("make")
         .current_dir(format!("{}/", WORKPATH))
-        .output();
+        .output()?;
+    if !output.status.success() {
+        println!("Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    } 
     std::fs::copy(
         format!("{}/tocompile.cell", WORKPATH),
         &format!("{}/{}.cell", fc.crundir, fc.containerid),

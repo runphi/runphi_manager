@@ -475,14 +475,21 @@ pub fn memconfig(
 
     // Insert line into the config file
     let pattern = r"struct jailhouse_cell_desc cell;\n[ \t]*__u64 cpus\[\d*\];";
+    let pattern_fpga = r"[\t]*__u64 fpga_regions\[\d*\];";
     let num_regions = count_mem_regions(config);
     let linetoinsert = format!("\tstruct jailhouse_memory mem_regions[{}];", num_regions); // Use format! to include the variable
 
     // Compile a regular expression to match the pattern and insert the cpus
     let re = Regex::new(&pattern)?;
     if let Some(pos) = re.find(&c.conf) {
+        let re = Regex::new(&pattern_fpga)?;
+        let old_pos = pos.clone();
+        if let Some(pos) = re.find(&c.conf) {
+            c.conf
+            .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));}
+        else{
         c.conf
-            .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
+            .insert_str(old_pos.end(), &format!("\n{}\n", linetoinsert));}
     } else {
         return Err("\"struct jailhouse_cell_desc cell\" not found".into());
     }

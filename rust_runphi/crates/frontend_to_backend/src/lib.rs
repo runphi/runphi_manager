@@ -38,6 +38,37 @@ impl FrontendConfig {
     }
 }
 
+
+//Structure to hold information about an hardware accelerator
+#[derive(Debug, Deserialize)]
+pub struct Accelerator {
+    #[serde(default)]
+    pub core: String,
+
+    #[serde(rename = "starting_vaddress",default)]
+    pub acc_starting_vaddress: String, //for this accelerator, if necessary
+
+    #[serde(rename = "inmate",default)]
+    pub acc_inmate: String,
+
+    #[serde(skip)]
+    pub bitstream : String,
+
+    #[serde(skip)]
+    pub region : i64
+}
+
+impl Default for Accelerator {
+    fn default() -> Self {
+        Accelerator {
+            core: String::new(),
+            acc_starting_vaddress: String::new(),
+            acc_inmate: String::new(),
+            bitstream: String::new(),
+            region : -1,
+        }
+    }
+}
 // This structure holds the information that describe the image to be started as partitioned cell
 // These are additional to standard information required by containers. For example, if dealing with a
 // binary, the starting virtual address is required to perform a mapping, or the devices used or the
@@ -76,7 +107,9 @@ pub struct ImageConfig {
     //TODO: handle default or missing values in a decent way
     // This line is needed to include the "net" field
     pub net: String,
-}
+    #[serde[default]] 
+    pub accelerator: Accelerator
+} 
 impl ImageConfig {
     pub fn get_from_file(mountpoint: &str) -> Self {
         // parsing configuration variables from the file
@@ -92,6 +125,7 @@ impl ImageConfig {
         } else {
             config.inmate = format!("{}/boot/boot.bin", mountpoint);
         }
+        config.accelerator.core = format!("simple");
         return config;
     }
 }

@@ -77,11 +77,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .append(true)
         .open("/usr/share/runPHI/log.txt")?;
 
-    let opts = Opts::parse();
-    let _app = Opts::command();
+    let opts = Opts::parse(); //RIMUOVERE. questo parsa le opzioni da riga di comando e le mette in Opts
+    let _app = Opts::command(); //restituisce un oggetto command che rappresenta la struttura della cli?????
 
-    let _ = match opts.subcmd {
-        SubCommand::Standard(cmd) => match *cmd {
+    let _ = match opts.subcmd { //se opts.subcmd è un subcommand standard
+        SubCommand::Standard(cmd) => match *cmd { //allora matcha cmd,
             // We here distinguish the behaviour by command defined as OCI spec
             // Common to all commands, take the first 24 chars to get the containerID
             // RunPHI restricts the ID to 24 chars because hypervisors like Jailhouse may fail with
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // After collecting the ID, we have to check if we need to forward to runc because container
             // does not belong to RunPHI management cycle.
             //TODO: fix common part handling
-            StandardCmd::Create(create) => {
+            StandardCmd::Create(create) => { //se è create automaticamente in create ci vengono messe tutte le opzioni da linea di comando
                 containerid = create.container_id.chars().take(24).collect::<String>();
                 let _ = writeln!(logfile, "Creating with id {}", &containerid); //DEBUG
                 let _ = writeln!(logfile, "Parse json"); //DEBUG

@@ -407,6 +407,12 @@ pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> 
 pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
     // Read bundle and pidfile paths from the filesystem
     let cellfile = format!("{}/{}.cell", fc.crundir, fc.containerid);
+    let mut cmdfile = fs::OpenOptions::new()
+    .create(true)
+    .append(true)
+    .open("/usr/share/runPHI/commands.txt")?;
+    // if there is a bitstream copy in /lib/firmware
+
 
     // We have to differentiate among OSes, because linux has a different jh command
     // while other OSes may have special params, e.g. loading address for zephyr
@@ -466,13 +472,17 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
 
         //TODO: absolute path NOPE
         //let start_time = Instant::now();                                         //TIME
-        Command::new(JAILHOUSE_PATH)
+        let output = Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("create")
             .arg(cellfile)
             .output()?;
+        if !output.status.success() {
+            println!("Command failed: {}", String::from_utf8_lossy(&output.stderr));
+        } 
+        
         //writeln!(logfile, "lib.rs after create before load")?; //DEBUG
-        if !ic.starting_vaddress.is_empty() {
+       /* if !ic.starting_vaddress.is_empty() {
             Command::new(JAILHOUSE_PATH)
                 .arg("cell")
                 .arg("load")
@@ -488,9 +498,56 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .arg(&fc.containerid)
                 .arg(ic.inmate.trim())
                 .output()?;
+        } 
+        */
+        let mut args = vec!["cell", "load", &fc.containerid, ic.inmate.trim()];
+
+        if !ic.starting_vaddress.is_empty() {
+            args.push("-a");
+            args.push(&ic.starting_vaddress);
         }
+        //make it a for (for all accelerators)
+        if !ic.accelerator.acc_starting_vaddress.is_empty(){
+            args.push(ic.accelerator.acc_inmate.trim());
+            args.push("-a");
+            args.push(&ic.accelerator.acc_starting_vaddress);
+        }
+        //make it a for (for all bitstreams in this accelerators)
+        let mut region_string = String::new();
+        if !ic.accelerator.bitstream.is_empty() {
+            region_string =ic.accelerator.region.to_string();
+            args.push("-b");
+            args.push(&ic.accelerator.bitstream);
+            args.push(&region_string);
+        } 
+/* 
+        let cmd = Command::new(JAILHOUSE_PATH)
+                                .arg("cell")
+                                .arg("load")
+                                .arg(&fc.containerid)
+                                .arg(ic.inmate.trim()); 
+        if !ic.starting_vaddress.is_empty() {
+            cmd.arg("-a").arg(&ic.starting_vaddress);
+        }
+        if !ic.bitstream.is_empty() {
+            cmd.arg("-b").arg(&ic.bitstream).arg("0");  //per ora carichiamo solo in regione 0 :(
+        }
+        cmd.output()?;*/
+
+        let args_string = args.join(" ");
+        writeln!(cmdfile, "executing command: {} {}",JAILHOUSE_PATH,args_string)?;
+
+        let output = Command::new(JAILHOUSE_PATH)
+            .args(&args)
+            .output()?;
+
+        if !output.status.success() {
+            println!("Command failed: {}", String::from_utf8_lossy(&output.stderr));
+        } 
+       
         //writeln!(logfile, "lib.rs after create after load")?; //DEBUG
         let command = format!("echo \"caronte is listening\"");
+
         let start_output = Command::new("/usr/share/runPHI/caronte")
             .arg(command)
             .arg(&fc.containerid)
