@@ -1,5 +1,7 @@
 //*********************************************
-// Authors: Marco Barletta (marco.barletta@unina.it)
+// Authors: 
+// Marco Barletta (marco.barletta@unina.it)
+// Francesco Tafuri (fran.tafuri@studenti.unina.it)
 //*********************************************
 
 use clap::{CommandFactory, Parser};
@@ -11,6 +13,7 @@ use std::io::{self, Write};
 use std::process::exit;
 
 use liboci_cli::{GlobalOpts, StandardCmd};
+use logging;
 
 // High-level commandline option definition
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
@@ -41,44 +44,20 @@ mod frontend {
 }
 mod forwarding;
 
+
 //TODO: convert strings to Path and PathBuf
 const WORKPATH: &str = "/usr/share/runPHI";
 const RUNDIR: &str = "/run/runPHI";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Check if there is at least one runtime available, exit otherwise
-    
-    // TODO: "configuration" file is needed to check if a specific backend is enabled
-    // currently, only Jailhouse is supported. Replace "configuration" file with an efficient mechanism
-    // that is backend dependent (e.g., Jailhouse enabled should be checked with jailhouse.ko
-    // loaded)
-
-    let _ = match fs::read_to_string(format!("{}/configuration", WORKPATH)) {
-        Ok(content) => {
-            if content.trim().is_empty() {
-                writeln!(io::stderr(), "No runPHI runtime available, forwarding")?;
-                forwarding::call_runc();
-                exit(10);
-            } else {
-                Some(content)
-            }
-        }
-        Err(err) => {
-            eprintln!("Error reading file: {}", err);
-            forwarding::call_runc();
-            exit(9);
-        }
-    };
+    //TODO: if no backend is available at the moment, forward to runc
 
     let containerid;
     let mut config: serde_json::Value = serde_json::Value::Null;
-    let mut logfile = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/usr/share/runPHI/log.txt")?;
-
     let opts = Opts::parse();
-    let _app = Opts::command();
+    //let _app = Opts::command();
+
+    logging::init_logger(Some(std::path::PathBuf::from(std::path::Path::new("/usr/share/runPHI/log.txt"))));//opts.global.log);
 
     let _ = match opts.subcmd {
         SubCommand::Standard(cmd) => match *cmd {
@@ -91,20 +70,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             //TODO: fix common part handling
             StandardCmd::Create(create) => {
                 containerid = create.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Creating with id {}", &containerid); //DEBUG
-                let _ = writeln!(logfile, "Parse json"); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Creating with id {}", &containerid).as_str());
+                logging::log_message(logging::Level::Debug,  "Parse json");
                 let config_json = fs::read_to_string(format!(
                     "{}/config.json",
-                    &create.bundle.to_string_lossy().into_owned()
-                ))?;
+                    &create.bundle.to_string_lossy().into_owned()))?;
                 config = serde_json::from_str(&config_json)?;
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
-                let _ = writeln!(
-                    logfile,
-                    "Not forwarded containerid creation {}",
-                    &containerid
-                ); //DEBUG
-                   // If we are here, there was no forwarding to runc, hence we start runphi management
+
+                // If we are here, there was no forwarding to runc, hence we start runphi management
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 //TODO: fix?, this should not exist
                 fs::remove_dir_all(&crundir).ok();
@@ -115,15 +89,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             StandardCmd::Start(start) => {
                 containerid = start.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Starting with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Starting with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
-                let _ = writeln!(logfile, "Starting with id not forwarded {}", &containerid); //DEBUG
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::start(&containerid, &crundir);
             }
             StandardCmd::Kill(kill) => {
                 containerid = kill.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Killing with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Killing with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::kill(&containerid, &crundir);
@@ -131,7 +104,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             StandardCmd::Delete(delete) => {
                 containerid = delete.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Deleting with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Deleting with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary_delete(&config, &containerid);
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::delete(&containerid, &crundir);
@@ -139,7 +112,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             StandardCmd::State(state) => {
                 containerid = state.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "State with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("State with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::state(&containerid, &crundir);

@@ -44,6 +44,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "f2b",
+ "logging",
  "nix 0.20.2",
  "psutil",
  "regex",
@@ -234,6 +235,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
 name = "libc"
 version = "0.2.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -251,6 +258,14 @@ name = "log"
 version = "0.4.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+
+[[package]]
+name = "logging"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "log",
+]
 
 [[package]]
 name = "mach2"
@@ -406,6 +421,7 @@ dependencies = [
  "clap",
  "f2b",
  "liboci-cli",
+ "logging",
  "nix 0.20.2",
  "psutil",
  "regex",

@@ -14,6 +14,7 @@ use std::str;
 //use std::time::Instant; //TIME CLOCK MONOTONIC
 
 use f2b;
+use logging;
 
 #[allow(non_snake_case)]
 pub mod configGenerator;
@@ -341,11 +342,6 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
 //We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
-    /* let mut logfile = fs::OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open("/usr/share/runPHI/log_lib.txt")?; */
-
     // Construct the file path
     //let start_time = Instant::now();                                 //TIME
     let configuration_path = format!("/run/runPHI/{}/config{}.conf", containerid, containerid);
@@ -371,8 +367,6 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     // Always call restore_memory_segment
     restore_memory_segment(phys_start, end_address)?;
 
-    //writeln!(logfile, "lib.rs after removal")?; //DEBUG
-
     // Execute the command to destroy the jailhouse cell using the name of the cell containerid
     let _ = Command::new(JAILHOUSE_PATH)
         .arg("cell")
@@ -380,8 +374,6 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
         .arg(containerid)
         .output()
         .expect("Failed to execute command");
-
-    //writeln!(logfile, "lib.rs after destroy")?; //DEBUG
 
     // Now kill caronte
     let pathtokill = std::fs::read_to_string(format!("{}/pidfile", crundir))?;
@@ -391,7 +383,6 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
     fs::remove_dir_all(&crundir).ok();
 
-    //writeln!(logfile, "lib.rs after kill_caronte last line")?; //DEBUG
     //let _ = append_message_with_time(&format!("Time elapsed in Destroy guest is: {:?}", start_time.elapsed())); //TIME
     //let _ = append_message_with_time("");
     return Ok(());
@@ -457,22 +448,22 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             }
         }
     } else {
-        //writeln!(logfile, "lib.rs before create")?; //DEBUG
 
         // Handle baremetal or libOS built with application
         // Here we have to wait both commands to return to guarantee ordering, and then we start caronte
         // caronte is needed to keep a pid alive expected by containerd before giving the start
-        //writeln!(logfile, "cellfile is : {}", cellfile)?; //DEBUG
-
+        
         //TODO: absolute path NOPE
         //let start_time = Instant::now();                                         //TIME
+        logging::log_message(logging::Level::Debug, format!("Creating cell on cellfile {}", &cellfile).as_str());
         Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("create")
             .arg(cellfile)
             .output()?;
-        //writeln!(logfile, "lib.rs after create before load")?; //DEBUG
+
         if !ic.starting_vaddress.is_empty() {
+            logging::log_message(logging::Level::Debug, format!("Starting cell with id {} Vaddress specified", &fc.containerid).as_str());
             Command::new(JAILHOUSE_PATH)
                 .arg("cell")
                 .arg("load")
@@ -482,6 +473,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .arg(&ic.starting_vaddress)
                 .output()?;
         } else {
+            logging::log_message(logging::Level::Debug, format!("Starting cell with id {} Defaulting vaddress", &fc.containerid).as_str());
             Command::new(JAILHOUSE_PATH)
                 .arg("cell")
                 .arg("load")
@@ -489,8 +481,8 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .arg(ic.inmate.trim())
                 .output()?;
         }
-        //writeln!(logfile, "lib.rs after create after load")?; //DEBUG
         let command = format!("echo \"caronte is listening\"");
+        logging::log_message(logging::Level::Debug, format!("Starting caronted with id {}", &fc.containerid).as_str());
         let start_output = Command::new("/usr/share/runPHI/caronte")
             .arg(command)
             .arg(&fc.containerid)
@@ -499,7 +491,6 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
         //let _ = append_message_with_time(&format!("Time elapsed in Create guest is: {:?}", start_time.elapsed())); //TIME
     }
-    //writeln!(logfile, "lib.rs createguest end")?; //DEBUG
     Ok(())
 }
 

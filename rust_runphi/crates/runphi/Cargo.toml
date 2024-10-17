@@ -20,3 +20,4 @@ regex = "1.5.4"
 liboci-cli = { path = "../liboci-cli" }
 backend = { path = "../backend_jailhouse" }
 f2b = { path = "../frontend_to_backend" }
+logging = { path = "../logging" } 

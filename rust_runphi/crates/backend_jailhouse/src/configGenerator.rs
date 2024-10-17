@@ -45,24 +45,21 @@ impl Backendconfig {
 
 //TODO: error handling across this function is a box of shit, handle it
 pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>, Box<dyn Error>> {
+    logging::log_message(logging::Level::Debug, format!("Starting config generator for id {}", &fc.containerid).as_str());
 
-    let _ = append_message_with_time(&format!("starting config generator")); //TIME
     let mut c = Backendconfig::new();
     c.conffile = format!("{}/config{}.conf", fc.crundir, fc.containerid);
 
     // parsing configuration variables from the file
     //THIS IS THE ACCESS TO JSON.CONFIG FROM DOCKER
-    //writeln!(logfile, "Parsing config.json")?;                        //DEBUG
+    logging::log_message(logging::Level::Debug, format!("Reading the config.json inside the container for id {}", &fc.containerid).as_str());
     let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint));
     //Clone the value of config.net (from the internal .json) to c.net
     c.net = config.net.clone();
 
     //let start_time = Instant::now();                                                    //TIME
-    let _ = append_message_with_time(&format!("helper start")); //TIME
+    logging::log_message(logging::Level::Debug, format!("Config helper start for id {}", &fc.containerid).as_str());
     let _ = confighelperstart(fc, &mut c, &config);
-    let _ = append_message_with_time(&format!("helper start end")); //TIME
-    //let _ = append_message_with_time(&format!("Time elapsed in helper start is: {:?}", start_time.elapsed())); //TIME
-
 
     // This region of code could be extended with code to retrieve other specific Docker's flags which set CPU limitations
     // cpus where allow guest execution set by Docker's flag 'cpuset-cpus'
@@ -97,10 +94,10 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
      Here can be implemented: hypervisor agnostic real-time schedulability tests, etc.
     */
 
-    //writeln!(logfile, "Calling CPU config")?;                         //DEBUG
     //let start_time = Instant::now();                                                    //TIME
+    logging::log_message(logging::Level::Debug, format!("Configuring CPU for id {}", &fc.containerid).as_str());
     let _ = cpu::cpuconf(fc, &mut c, &quota, &period, &cpus);
-    let _ = append_message_with_time(&format!("Finished cpu config")); //TIME
+    
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
     // Extract values from the JSON structure
     //In the json structure only limit is created by kubernetes memory reservation doesn't exist so I'll comment it
@@ -119,21 +116,13 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let start_time = Instant::now();                                                    //TIME
 
     //Pass everything to memconfig
-    let _ = append_message_with_time(&format!("starting mem config")); //TIME
-    let _ = append_message_with_time(&mem_request_hex); //TIME
+    logging::log_message(logging::Level::Debug, format!("Configuring memory for id {}", &fc.containerid).as_str());
     let _ = mem::memconfig(&mut c, &mem_request_hex);
-    let _ = append_message_with_time(&format!("finished mem config")); //TIME
-
-    //let _ = append_message_with_time(&format!("Time elapsed in mem config is: {:?}", start_time.elapsed())); //TIME
-
-    //writeln!(logfile, "Memoryend - devconfig start")?;       //DEBUG
-
+    
     //let start_time = Instant::now();                                                    //TIME
-
-    let _ = append_message_with_time(&format!("starting dev cfg")); //TIME
+    logging::log_message(logging::Level::Debug, format!("Configuring Device for id {}", &fc.containerid).as_str());
     let _ = device::devconfig(&mut c);
-    let _ = append_message_with_time(&format!("finished dev cfg")); //TIME
-    //let _ = append_message_with_time(&format!("Time elapsed in dev config is: {:?}", start_time.elapsed())); //TIME
+
 
     //let start_time = Instant::now();                                                    //TIME
 
@@ -152,7 +141,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     // If -t flag was specified, call COMMUNICATION backend for further processing
     // E.G. allocate terminal or ssh shell
-    //writeln!(logfile, "Before guestconsole is empty")?; //DEBUG
+
     if !fc.guestconsole.is_empty() {
         let mut file = fs::File::create(format!("{}/console", fc.crundir))
             .expect("Failed to create console file");
@@ -165,18 +154,13 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     //let _ = append_message_with_time(&format!("Time elapsed in comm config is: {:?}", start_time.elapsed())); //TIME
 
-    //writeln!(logfile, "calling config helper end")?; //DEBUG
+    logging::log_message(logging::Level::Debug, format!("Finishing configuration for id {}", &fc.containerid).as_str());
+    
 
     //let start_time = Instant::now();                                                    //TIME
 
     let _ = confighelperend(fc, &mut c, &config);
     //let _ = append_message_with_time(&format!("Time elapsed in helper_end is: {:?}", start_time.elapsed())); //TIME
-
-    //writeln!(logfile, "last line")?; //DEBUG
-
-    // Write the return variable 'config' to the logfile
-    //writeln!(logfile, "State of 'c': {:?}", c)?; //DEBUG
-
     return Ok(config);
 }
 
