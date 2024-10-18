@@ -52,10 +52,10 @@ pub struct Accelerator {
     pub acc_inmate: String,
 
     #[serde(skip)]
-    pub bitstream : String,
+    pub bitstream : Vec<String>,
 
     #[serde(skip)]
-    pub region : i64
+    pub region : Vec<i64>
 }
 
 impl Default for Accelerator {
@@ -64,8 +64,8 @@ impl Default for Accelerator {
             core: String::new(),
             acc_starting_vaddress: String::new(),
             acc_inmate: String::new(),
-            bitstream: String::new(),
-            region : -1,
+            bitstream: Vec::new(),
+            region : Vec::new(),
         }
     }
 }

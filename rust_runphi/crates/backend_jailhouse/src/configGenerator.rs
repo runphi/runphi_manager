@@ -28,7 +28,7 @@ const WORKPATH: &str = "/usr/share/runPHI";
 pub struct Backendconfig {
     pub conf: String,
     pub cpus: u8,
-    pub fpga_regions: u8,
+    pub fpga_regions: usize,
     pub conffile: String,
     pub net: String,
 }
@@ -114,8 +114,9 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //before requesting memory, let's get info about the bitstreams
     let _ = fpga::fpgaconf(fc, &mut c, &mut config.accelerator);
     let _ = append_message_with_time(&format!("Finished fpga config")); //TIME
-    let _ = append_message_with_time(&format!("accelerator.bitstream: {}",config.accelerator.bitstream)); //TIME
-
+    for bstream in &config.accelerator.bitstream {
+        let _ = append_message_with_time(&format!("accelerator.bitstream: {}",bstream)); //TIME
+    }
 
     let mem_request = fc.jsonconfig["linux"]["resources"]["memory"]["limit"] //Maximum domain memory in MB, (-m, --memory="")
         .as_u64() // Assuming memory values are in unsigned integers

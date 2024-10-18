@@ -411,7 +411,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
     .create(true)
     .append(true)
     .open("/usr/share/runPHI/commands.txt")?;
-    // if there is a bitstream copy in /lib/firmware
+
 
 
     // We have to differentiate among OSes, because linux has a different jh command
@@ -477,6 +477,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             .arg("create")
             .arg(cellfile)
             .output()?;
+            
         if !output.status.success() {
             println!("Command failed: {}", String::from_utf8_lossy(&output.stderr));
         } 
@@ -500,40 +501,36 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .output()?;
         } 
         */
-        let mut args = vec!["cell", "load", &fc.containerid, ic.inmate.trim()];
+        //let mut args = vec!["cell", "load", &fc.containerid, ic.inmate.trim()];
+        // jailhouse cell load <cell> <inmate>
+        let mut args: Vec<String> = Vec::new();
+        args.push("cell load".to_string());
+        args.push(fc.containerid.to_string());
+        args.push(ic.inmate.trim().to_string());
 
+        //-a vaddr if present
         if !ic.starting_vaddress.is_empty() {
-            args.push("-a");
-            args.push(&ic.starting_vaddress);
+            args.push("-a".to_string());
+            args.push(ic.starting_vaddress.clone());
         }
+
+        //-a vaddr for accelerator images
         //make it a for (for all accelerators)
         if !ic.accelerator.acc_starting_vaddress.is_empty(){
-            args.push(ic.accelerator.acc_inmate.trim());
-            args.push("-a");
-            args.push(&ic.accelerator.acc_starting_vaddress);
+            args.push(ic.accelerator.acc_inmate.trim().to_string());
+            args.push("-a".to_string());
+            args.push(ic.accelerator.acc_starting_vaddress.clone());
         }
-        //make it a for (for all bitstreams in this accelerators)
-        let mut region_string = String::new();
-        if !ic.accelerator.bitstream.is_empty() {
-            region_string =ic.accelerator.region.to_string();
-            args.push("-b");
-            args.push(&ic.accelerator.bitstream);
-            args.push(&region_string);
-        } 
-/* 
-        let cmd = Command::new(JAILHOUSE_PATH)
-                                .arg("cell")
-                                .arg("load")
-                                .arg(&fc.containerid)
-                                .arg(ic.inmate.trim()); 
-        if !ic.starting_vaddress.is_empty() {
-            cmd.arg("-a").arg(&ic.starting_vaddress);
-        }
-        if !ic.bitstream.is_empty() {
-            cmd.arg("-b").arg(&ic.bitstream).arg("0");  //per ora carichiamo solo in regione 0 :(
-        }
-        cmd.output()?;*/
 
+        //-b bitstream region for bitstream
+        for i in 0..ic.accelerator.bitstream.len(){
+            if !ic.accelerator.bitstream[i].is_empty() {
+                args.push("-b".to_string());
+                args.push(ic.accelerator.bitstream[i].clone());
+                args.push(ic.accelerator.region[i].to_string());
+            }
+        }
+        //DEBUG, to see commands
         let args_string = args.join(" ");
         writeln!(cmdfile, "executing command: {} {}",JAILHOUSE_PATH,args_string)?;
 

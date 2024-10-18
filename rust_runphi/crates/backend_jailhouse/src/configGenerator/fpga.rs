@@ -6,24 +6,27 @@ use std::io;
 use std::path::Path;
 use std::io::BufRead;
 
-
 use crate::configGenerator;
 use f2b;
 
-const FPGADIR: &str = "/usr/share/runPHI/fpga_dir/";
+const WORKDIR: &str = "/usr/share/runPHI/";
 const FPGA_FILE: &str = "fpga_info.txt";
 
-/*
-pub fn qualcos(){
-    //apri quel file
-    //per ogni linea in quel file
-    //se il nome (il primo elemento) è uguale al nome del bitstream che ti serve
-    //allora controlla se le regioni in questione sono libere
-    //se si, metti c.fpga_regions = num, modifica regions_assigned
-    //metti da qualche parte che il nome del bstream è quello (magari sostituisci il nome preciso a core nell'image config)
+pub fn regions_available(free: &Vec<u32>, requested: &str, assigned: &mut Vec<u32>) -> bool {
+    // takes 'list' of regions in form x1-x2-x3 and list of free regions
+    // gives back true if are available and modifies 'assigned'
+    let regions: Vec<u32> = requested.split('-').map(|s| s.parse::<u32>().unwrap()).collect();   
+    for r in &regions {
+        //check if free contains region
+        if !free.contains(&r){
+            return false;
+        }
+    } 
+    for r in regions {
+        assigned.push(r);
     }
-
-*/
+    return true;
+}
 
 pub fn fpgaconf(
     _fc: &f2b::FrontendConfig,
@@ -58,16 +61,10 @@ pub fn fpgaconf(
         }
     }
 
-    //chiama qui la funzione, passa free_..., cambia regions_assigned (forse ritorna? forse direttamente come bitmask)
-    // Ensure there are enough available regions
-   /*  if free_fpga_regions.len() < fpga_regions as usize {
-        return Err("Not enough free regions left".to_owned().into());
-    }    
- */
-    //let regionsassigned: Vec<usize> = free_fpga_regions[..fpga_regions as usize].to_vec();   
+    let mut regionsassigned: Vec<u32> = Vec::new(); 
     let mut fpga_bitmask: u32 = 0;
-    let fpga_regions_file_path = Path::new(FPGADIR).join(FPGA_FILE);
-    let mut file = File::open(&fpga_regions_file_path)?;
+    let fpga_regions_file_path = Path::new(WORKDIR).join(FPGA_FILE);
+    let file = File::open(&fpga_regions_file_path)?;
     let reader = io::BufReader::new(file);
     let mut lines = reader.lines();
     lines.next(); //skip header line
@@ -75,14 +72,17 @@ pub fn fpgaconf(
     for line in lines {
         if let Ok(record_line) = line {
             let values: Vec<&str> = record_line.split(',').collect();
-            //println!("{}=={}?",values[0],core);
             if values[0] == accelerator.core {
-                let region : u32 = values[1].parse().expect("Failed to parse number");
-                if free_fpga_regions.contains(&region){
-                    accelerator.bitstream =  values[2].to_string(); 
-                    accelerator.region = region as i64;
-                    //aggiungi anche a regionsassigned in futuro
-                    c.fpga_regions = 1;
+                let nregions : usize = values[1].parse().expect("Failed to parse number"); 
+                //this bitstream requires nregions. Check if specified regions are available
+                if regions_available(&free_fpga_regions, values[2], &mut regionsassigned) { 
+                   //if they are, assign them to this new cell
+                    for n in 0..nregions {
+                        println!("values[{}]={}",2+n,values[3+n].to_string());
+                        accelerator.bitstream.push(values[3+n].to_string());
+                        accelerator.region.push(regionsassigned[n] as i64);
+                    }
+                    c.fpga_regions = nregions; //for the backend
                     break;
                 }
             }
@@ -112,12 +112,9 @@ pub fn fpgaconf(
         //        return Err("\"__u64 cpus[1]\" not found".into());
     }
 
-    let mut fpga_bitmask: u64 = 0;
-    //for now, just one region. then, vector regionsassigned
-    fpga_bitmask |= 1 << accelerator.region;
-   /*  for &region in &regionsassigned {
+     for &region in &regionsassigned {
         fpga_bitmask |= 1 << region;
-    } */
+    } 
     
     let hex_str = format!("{:x}", fpga_bitmask);
 
