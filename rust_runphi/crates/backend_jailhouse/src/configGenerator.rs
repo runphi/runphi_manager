@@ -112,11 +112,10 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     .unwrap_or(512); // Set default value to 512 MB if the value is missing */
 
     //before requesting memory, let's get info about the bitstreams
-    let _ = fpga::fpgaconf(fc, &mut c, &mut config.accelerator);
+    let _ = fpga::fpgaconf(fc, &mut c, &mut config);
     let _ = append_message_with_time(&format!("Finished fpga config")); //TIME
-    for bstream in &config.accelerator.bitstream {
-        let _ = append_message_with_time(&format!("accelerator.bitstream: {}",bstream)); //TIME
-    }
+    //we should manage rrors somehow. now it is ignored
+
 
     let mem_request = fc.jsonconfig["linux"]["resources"]["memory"]["limit"] //Maximum domain memory in MB, (-m, --memory="")
         .as_u64() // Assuming memory values are in unsigned integers
@@ -284,12 +283,10 @@ fn confighelperend(
 
     // Compile the config file
     //TODO: handle compilation error
-    let output = std::process::Command::new("make")
+    std::process::Command::new("make")
         .current_dir(format!("{}/", WORKPATH))
         .output()?;
-    if !output.status.success() {
-        println!("Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    } 
+     
     std::fs::copy(
         format!("{}/tocompile.cell", WORKPATH),
         &format!("{}/{}.cell", fc.crundir, fc.containerid),

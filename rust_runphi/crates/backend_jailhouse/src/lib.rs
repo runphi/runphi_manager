@@ -407,12 +407,45 @@ pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> 
 pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
     // Read bundle and pidfile paths from the filesystem
     let cellfile = format!("{}/{}.cell", fc.crundir, fc.containerid);
+    //DEBUG. REMOVE LATER
     let mut cmdfile = fs::OpenOptions::new()
     .create(true)
     .append(true)
     .open("/usr/share/runPHI/commands.txt")?;
 
+    
+    // Command to load bitstream and other accelerator images
 
+    // move bitstream to right directory
+    for accelerator in &ic.accelerators {
+        if !accelerator.bitstream.is_empty(){ 
+            //we were given bistream path inside the container
+            Command::new("cp").arg(&accelerator.bitstream).arg("/lib/firmware").output()?;
+        }
+    }    
+
+    // build vector of arguments
+    let mut args: Vec<String> = Vec::new();
+
+    // images for all accelerators
+    for accelerator in &ic.accelerators {
+        //-a vaddr for accelerator images
+        if !accelerator.acc_inmate.is_empty(){
+        args.push(accelerator.acc_inmate.trim().to_string());
+        args.push("-a".to_string());
+        args.push(accelerator.acc_starting_vaddress.clone());
+        }
+    }
+    // for all bitstreams
+    for i in 0..ic.bitstreams.len(){
+        args.push("-b".to_string());
+        args.push(ic.bitstreams[i].clone());
+        args.push(ic.regions[i].to_string());
+    }
+
+    //DEBUG, to see commands
+    let args_string = args.join(" ");
+    writeln!(cmdfile, "will execute command: {} {}",JAILHOUSE_PATH,args_string)?;
 
     // We have to differentiate among OSes, because linux has a different jh command
     // while other OSes may have special params, e.g. loading address for zephyr
@@ -462,6 +495,12 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 return Err("Arch not recognized".into());
             }
         }
+        
+        // load accelerator/secondary inmates and bitstreams -> THIS IS NOT OK
+     /*    Command::new(JAILHOUSE_PATH)
+            .args(&args)
+            .output()?; */
+            
     } else {
         //writeln!(logfile, "lib.rs before create")?; //DEBUG
 
@@ -472,18 +511,14 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
 
         //TODO: absolute path NOPE
         //let start_time = Instant::now();                                         //TIME
-        let output = Command::new(JAILHOUSE_PATH)
+        Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("create")
             .arg(cellfile)
             .output()?;
-            
-        if !output.status.success() {
-            println!("Command failed: {}", String::from_utf8_lossy(&output.stderr));
-        } 
-        
+
         //writeln!(logfile, "lib.rs after create before load")?; //DEBUG
-       /* if !ic.starting_vaddress.is_empty() {
+       if !ic.starting_vaddress.is_empty() {
             Command::new(JAILHOUSE_PATH)
                 .arg("cell")
                 .arg("load")
@@ -500,48 +535,12 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .arg(ic.inmate.trim())
                 .output()?;
         } 
-        */
-        //let mut args = vec!["cell", "load", &fc.containerid, ic.inmate.trim()];
-        // jailhouse cell load <cell> <inmate>
-        let mut args: Vec<String> = Vec::new();
-        args.push("cell load".to_string());
-        args.push(fc.containerid.to_string());
-        args.push(ic.inmate.trim().to_string());
-
-        //-a vaddr if present
-        if !ic.starting_vaddress.is_empty() {
-            args.push("-a".to_string());
-            args.push(ic.starting_vaddress.clone());
-        }
-
-        //-a vaddr for accelerator images
-        //make it a for (for all accelerators)
-        if !ic.accelerator.acc_starting_vaddress.is_empty(){
-            args.push(ic.accelerator.acc_inmate.trim().to_string());
-            args.push("-a".to_string());
-            args.push(ic.accelerator.acc_starting_vaddress.clone());
-        }
-
-        //-b bitstream region for bitstream
-        for i in 0..ic.accelerator.bitstream.len(){
-            if !ic.accelerator.bitstream[i].is_empty() {
-                args.push("-b".to_string());
-                args.push(ic.accelerator.bitstream[i].clone());
-                args.push(ic.accelerator.region[i].to_string());
-            }
-        }
-        //DEBUG, to see commands
-        let args_string = args.join(" ");
-        writeln!(cmdfile, "executing command: {} {}",JAILHOUSE_PATH,args_string)?;
-
-        let output = Command::new(JAILHOUSE_PATH)
+        
+        // load accelerator/secondary inmates and bitstreams
+        Command::new(JAILHOUSE_PATH)
             .args(&args)
             .output()?;
-
-        if !output.status.success() {
-            println!("Command failed: {}", String::from_utf8_lossy(&output.stderr));
-        } 
-       
+        
         //writeln!(logfile, "lib.rs after create after load")?; //DEBUG
         let command = format!("echo \"caronte is listening\"");
 

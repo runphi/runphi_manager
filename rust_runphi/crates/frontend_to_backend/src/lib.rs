@@ -51,11 +51,13 @@ pub struct Accelerator {
     #[serde(rename = "inmate",default)]
     pub acc_inmate: String,
 
-    #[serde(skip)]
-    pub bitstream : Vec<String>,
-
-    #[serde(skip)]
-    pub region : Vec<i64>
+    //If the image contains its own bitstream:
+    #[serde[default]] 
+    pub bitstream: String,
+    
+    #[serde[default]] 
+    pub region: String,
+    
 }
 
 impl Default for Accelerator {
@@ -64,8 +66,8 @@ impl Default for Accelerator {
             core: String::new(),
             acc_starting_vaddress: String::new(),
             acc_inmate: String::new(),
-            bitstream: Vec::new(),
-            region : Vec::new(),
+            bitstream: String::new(),
+            region :String::new(),
         }
     }
 }
@@ -107,11 +109,21 @@ pub struct ImageConfig {
     //TODO: handle default or missing values in a decent way
     // This line is needed to include the "net" field
     pub net: String,
+    //if the image contains the description of an accelerator
     #[serde[default]] 
-    pub accelerator: Accelerator
+    //pub accelerator: Accelerator
+    pub accelerators: Vec<Accelerator>,
+
+    #[serde(skip)]
+    pub bitstreams: Vec<String>,
+
+    #[serde(skip)]
+    pub regions : Vec<i64>
+
 } 
 impl ImageConfig {
     pub fn get_from_file(mountpoint: &str) -> Self {
+
         // parsing configuration variables from the file
         //TODO: here is the case to parse also a node default used in the case the container does not specify this
         //TODO: parametrize boot boot.bin and config.json
@@ -120,12 +132,39 @@ impl ImageConfig {
             Err(_) => String::new(),
         };
         let mut config: ImageConfig = serde_json::from_str(&json_str).unwrap();
+/* 
+        // FOR NOW
+         //config.accelerator.core = format!("simple");
+         let mut a : Accelerator = Accelerator::default();
+         a.core = "simple".to_string();
+         a.acc_inmate = "/boot/hi.bin".to_string();
+         a.acc_starting_vaddress = "0x2".to_string();
+         let mut a1 : Accelerator = Accelerator::default();
+         a1.bitstream = "/boot/bitstream/anna.bit".to_string();
+         a1.region = "0".to_string(); 
+         let mut a2 : Accelerator = Accelerator::default();
+         a2.core="big-soft-core".to_string();
+         a2.acc_inmate = "/boot/hibig.bin".to_string();
+         a2.acc_starting_vaddress = "0x4".to_string();
+         config.accelerators.push(a1); //first request region 0
+         config.accelerators.push(a2);  //then request region 1 and 2
+         config.accelerators.push(a); //ther request region 0 or 3 (will take 3)
+  */
+
         if !config.inmate.is_empty() {
             config.inmate = format!("{}{}", mountpoint, config.inmate);
         } else {
             config.inmate = format!("{}/boot/boot.bin", mountpoint);
         }
-        config.accelerator.core = format!("simple");
+        for accelerator in &mut config.accelerators {
+            if !accelerator.bitstream.is_empty(){
+                accelerator.bitstream = format!("{}{}", mountpoint, accelerator.bitstream);
+            }
+            if !accelerator.acc_inmate.is_empty() {
+                accelerator.acc_inmate = format!("{}{}", mountpoint, accelerator.acc_inmate);
+            }
+        }
+       
         return config;
     }
 }
