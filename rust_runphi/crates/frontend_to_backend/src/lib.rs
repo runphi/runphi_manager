@@ -114,6 +114,7 @@ pub struct ImageConfig {
     //pub accelerator: Accelerator
     pub accelerators: Vec<Accelerator>,
 
+    //skip, not given inside config.json
     #[serde(skip)]
     pub bitstreams: Vec<String>,
 
@@ -132,24 +133,6 @@ impl ImageConfig {
             Err(_) => String::new(),
         };
         let mut config: ImageConfig = serde_json::from_str(&json_str).unwrap();
-/* 
-        // FOR NOW
-         //config.accelerator.core = format!("simple");
-         let mut a : Accelerator = Accelerator::default();
-         a.core = "simple".to_string();
-         a.acc_inmate = "/boot/hi.bin".to_string();
-         a.acc_starting_vaddress = "0x2".to_string();
-         let mut a1 : Accelerator = Accelerator::default();
-         a1.bitstream = "/boot/bitstream/anna.bit".to_string();
-         a1.region = "0".to_string(); 
-         let mut a2 : Accelerator = Accelerator::default();
-         a2.core="big-soft-core".to_string();
-         a2.acc_inmate = "/boot/hibig.bin".to_string();
-         a2.acc_starting_vaddress = "0x4".to_string();
-         config.accelerators.push(a1); //first request region 0
-         config.accelerators.push(a2);  //then request region 1 and 2
-         config.accelerators.push(a); //ther request region 0 or 3 (will take 3)
-  */
 
         if !config.inmate.is_empty() {
             config.inmate = format!("{}{}", mountpoint, config.inmate);

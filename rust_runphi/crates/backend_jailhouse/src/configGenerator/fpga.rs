@@ -5,8 +5,6 @@ use std::io::Read;
 use std::io;
 use std::path::Path;
 use std::io::BufRead;
-use std::fs::OpenOptions;
-use std::io::Write;
 
 use crate::configGenerator;
 use f2b;
@@ -106,7 +104,6 @@ pub fn fpgaconf(
                     .to_str()
                     .unwrap();
 
-            println!("Bitstream name is {}",file_name);
             nregions = regions_available(&mut free_fpga_regions, &accelerator.region, &mut regionsassigned);
             // it's either 1 or 0
             if nregions != 0 {

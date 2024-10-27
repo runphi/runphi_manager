@@ -420,32 +420,12 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
     for accelerator in &ic.accelerators {
         if !accelerator.bitstream.is_empty(){ 
             //we were given bistream path inside the container
-            Command::new("cp").arg(&accelerator.bitstream).arg("/lib/firmware").output()?;
+             Command::new("cp").arg(&accelerator.bitstream).arg("/lib/firmware").output()?;
         }
     }    
 
     // build vector of arguments
     let mut args: Vec<String> = Vec::new();
-
-    // images for all accelerators
-    for accelerator in &ic.accelerators {
-        //-a vaddr for accelerator images
-        if !accelerator.acc_inmate.is_empty(){
-        args.push(accelerator.acc_inmate.trim().to_string());
-        args.push("-a".to_string());
-        args.push(accelerator.acc_starting_vaddress.clone());
-        }
-    }
-    // for all bitstreams
-    for i in 0..ic.bitstreams.len(){
-        args.push("-b".to_string());
-        args.push(ic.bitstreams[i].clone());
-        args.push(ic.regions[i].to_string());
-    }
-
-    //DEBUG, to see commands
-    let args_string = args.join(" ");
-    writeln!(cmdfile, "will execute command: {} {}",JAILHOUSE_PATH,args_string)?;
 
     // We have to differentiate among OSes, because linux has a different jh command
     // while other OSes may have special params, e.g. loading address for zephyr
@@ -462,15 +442,38 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             .nth(1)
             .unwrap();
 
+        
+        // for all bitstreams
+        for i in 0..ic.bitstreams.len(){
+            args.push("-b".to_string());
+            args.push(ic.bitstreams[i].clone());
+            args.push(ic.regions[i].to_string());
+        }
+
+         // images for all accelerators
+         for accelerator in &ic.accelerators {
+            //-a vaddr for accelerator images
+            if !accelerator.acc_inmate.is_empty(){
+                args.push("-l".to_string());
+                args.push(accelerator.acc_inmate.trim().to_string());
+                if !accelerator.acc_starting_vaddress.is_empty(){
+                    args.push(accelerator.acc_starting_vaddress.clone());
+                }
+           }
+        }
+        let args_string = args.join(" ");
         // Execute command based on architecture
         // We need an init process that starts monitoring and handles signals directed to partitioned container, move into shim??
         //TODO: not tested under x86. A patched kernel is needed
         match arch {
+          
             "x86_64" => {
                 let command = format!(
-                    "jailhouse cell linux {} {} -i {} -c \"console=ttyS0,115200\"",
-                    fc.containerid, ic.kernel, ic.initrd
+                    "jailhouse cell linux {} {} -i {} -c \"console=ttyS0,115200\" {}",
+                    fc.containerid, ic.kernel, ic.initrd, args_string
                 );
+                writeln!(cmdfile, "will execute command: {}",command)?;
+
                 let start_output = Command::new("/usr/share/runPHI/caronte")
                     .arg(command)
                     .arg(&fc.containerid)
@@ -480,8 +483,8 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             }
             "aarch32" | "aarch64" => {
                 let command = format!(
-                    "jailhouse cell linux {} {} -d {} -i {} -c \"console ttyAMA0,115200\"",
-                    fc.containerid, ic.kernel, ic.dtb, ic.cpio
+                    "jailhouse cell linux {} {} -d {} -i {} -c \"console ttyAMA0,115200\" {}",
+                    fc.containerid, ic.kernel, ic.dtb, ic.cpio, args_string
                 );
                 let start_output = Command::new("/usr/share/runPHI/caronte")
                     .arg(command)
@@ -536,11 +539,33 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .output()?;
         } 
         
+        // images for all accelerators
+        for accelerator in &ic.accelerators {
+            //-a vaddr for accelerator images
+            if !accelerator.acc_inmate.is_empty(){
+                args.push(accelerator.acc_inmate.trim().to_string());
+                if !accelerator.acc_starting_vaddress.is_empty(){
+                    args.push("-a".to_string());
+                    args.push(accelerator.acc_starting_vaddress.clone());
+                }
+            }
+        }
+        // for all bitstreams
+        for i in 0..ic.bitstreams.len(){
+            args.push("-b".to_string());
+            args.push(ic.bitstreams[i].clone());
+            args.push(ic.regions[i].to_string());
+        }
+
+        //DEBUG, to see commands
+        let args_string = args.join(" ");
+        writeln!(cmdfile, "will execute command: {} {}",JAILHOUSE_PATH,args_string)?;
+
         // load accelerator/secondary inmates and bitstreams
         Command::new(JAILHOUSE_PATH)
             .args(&args)
             .output()?;
-        
+    
         //writeln!(logfile, "lib.rs after create after load")?; //DEBUG
         let command = format!("echo \"caronte is listening\"");
 
