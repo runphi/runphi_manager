@@ -3,7 +3,7 @@
 //          Francesco Boccola (f.boccola@studenti.unina.it)
 //*********************************************
 
-use regex::Regex;
+//use regex::Regex;
 use std::error::Error;
 //use std::fs::{self, File, OpenOptions};
 use std::fs::File;
@@ -24,10 +24,6 @@ pub fn cpuconf(
     _period: &f64,
     cpusf64: &f64,
 ) -> Result<(), Box<dyn Error>> {
-    /* let mut logfile = fs::OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open("/usr/share/runPHI/log_CPU.txt")?; */
 
     let cpus: u8 = cpusf64.ceil() as u8; // Casting with ceil due to jh not supporting fraction of cpu allocation
     c.cpus = cpus;
@@ -58,25 +54,8 @@ pub fn cpuconf(
         return Err("Not enough free CPU left".to_owned().into());
     }
 
-    //writeln!(logfile, "free_cpus: {:?}", free_cpus)?; //DEBUG
-
     // Assign the required number of CPUs
     let cpusassigned: Vec<usize> = free_cpus[..cpus as usize].to_vec();
-    //writeln!(logfile, "cpuassigned: {:?}", cpusassigned)?; //DEBUG
-
-    // Insert line into the config file
-    //This is only the size of the .cpus field so always 1
-    let pattern = "struct jailhouse_cell_desc cell;";
-    let linetoinsert = "\t__u64 cpus[1];";
-
-    // Compile a regular expression to match the pattern and insert the cpus
-    let re = Regex::new(&pattern)?;
-    if let Some(pos) = re.find(&c.conf) {
-        c.conf
-            .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
-    } else {
-        return Err("\"struct jailhouse_cell_desc cell\" not found".into());
-    }
 
     // Append Cpuarray
     // A binary string representation of the assigned CPUs is created.
@@ -90,13 +69,9 @@ pub fn cpuconf(
 
     //let binary_str = format!("{:b}", cpus_bitmask); //for cpus in 0b
 
-    //writeln!(logfile, "binary string: {}", binary_str)?; //DEBUG
-
     //c.conf.push_str(&format!("\n\t.cpus = {{\n\t\t0b{},\n\t}},\n", binary_str)); //for cpus in 0b
     c.conf
         .push_str(&format!("\n\t.cpus = {{\n\t\t0x{},\n\t}},\n", hex_str)); //for cpus in 0x
-
-    //writeln!(logfile, "last line of cpuconf")?; //DEBUG
 
     return Ok(());
 }

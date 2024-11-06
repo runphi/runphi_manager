@@ -72,10 +72,12 @@ pub struct ImageConfig {
     pub netconf: String,
     #[serde(default)]
     pub starting_vaddress: String,
+    // This lines are needed to include the "net" and "rpu_req" field
     #[serde(default)]
-    //TODO: handle default or missing values in a decent way
-    // This line is needed to include the "net" field
     pub net: String,
+    #[serde(default)]
+    pub rpu_req: bool
+    // TODO: handle default or missing values in a decent way
 }
 impl ImageConfig {
     pub fn get_from_file(mountpoint: &str) -> Self {

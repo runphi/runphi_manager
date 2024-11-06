@@ -6,11 +6,12 @@
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use std::error::Error;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, BufRead, BufReader, Write};
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
+use toml::Value;
 //use std::time::Instant; //TIME CLOCK MONOTONIC
 
 use f2b;
@@ -21,11 +22,141 @@ pub mod configGenerator;
 
 const WORKPATH: &str = "/usr/share/runPHI";
 //const RUNDIR: &str = "/run/runPHI";
-const PCI_IVSHMEM_ID_FILE: &str = "pci_ivshmem_id.txt";
-const FREE_SEGMENTS_FILE: &str = "free_segments.txt";
 const JAILHOUSE_PATH: &str = "/root/jailhouse/tools/jailhouse";
+const STATEFILE: &str = "state.toml";
 
-//Function to extract memory region to restore and bdf to deassign from the configuartion file of the container
+fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
+    // Load and parse the current state from state.toml
+    let file_path = Path::new(WORKPATH).join(STATEFILE);
+    let content = fs::read_to_string(&file_path)?;
+    let mut parsed_toml: Value = content.parse::<Value>()?;
+
+    // Extract the data we need from the container section, if it exists
+    let (memory, rcpus, pci_bdf) = if let Some(container) = parsed_toml.get(containerid) {
+        (
+            container.get("memory").and_then(|m| m.as_str()).map(String::from),
+            container.get("rcpus").and_then(|r| r.as_str()).map(String::from),
+            container.get("pci_bdf").and_then(|p| p.as_str()).map(String::from),
+        )
+    } else {
+        return Err(format!("Container {} not found in state.toml", containerid).into());
+    };
+
+/*  // Free memory: Add container's memory segment back to `free_segments`
+    if let Some(memory) = memory {
+        if let Some(free_segments) = parsed_toml.get_mut("free_segments") {
+            let segments = free_segments.get_mut("segments").and_then(|s| s.as_array_mut());
+            if let Some(segments) = segments {
+                segments.push(Value::String(memory));
+            }
+        }
+    } */
+
+    // Free memory: Add container's memory segment back to `free_segments` +
+    // + Merging logic for free memory segments
+    if let Some(free_segments) = parsed_toml.get_mut("free_segments") {
+        let segments = free_segments.get_mut("segments").and_then(|s| s.as_array_mut());
+        
+        if let Some(segments) = segments {
+            // Add the new memory segment to the list
+            if let Some(memory) = memory {
+                segments.push(Value::String(memory));
+            }
+
+            // Parse segments into tuples of (start, end)
+            let mut parsed_segments: Vec<(u64, u64)> = segments
+                .iter()
+                .filter_map(|s| s.as_str())
+                .filter_map(|seg| {
+                    let parts: Vec<&str> = seg.split(", ").collect();
+                    if parts.len() == 2 {
+                        Some((
+                            u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).ok()?,
+                            u64::from_str_radix(parts[1].trim_start_matches("0x"), 16).ok()?,
+                        ))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Sort segments by their start address
+            parsed_segments.sort_by_key(|&(start, _)| start);
+
+            // Merge contiguous segments
+            let mut merged_segments = Vec::new();
+            let mut current_segment = parsed_segments[0];
+
+            for &(start, end) in &parsed_segments[1..] {
+                if current_segment.1 == start {
+                    // If contiguous, extend the current segment
+                    current_segment.1 = end;
+                } else {
+                    // Otherwise, save the current segment and start a new one
+                    merged_segments.push(current_segment);
+                    current_segment = (start, end);
+                }
+            }
+            // Add the last segment
+            merged_segments.push(current_segment);
+
+            // Convert merged segments back to string format and update `segments`
+            *segments = merged_segments
+                .into_iter()
+                .map(|(start, end)| Value::String(format!("0x{:x}, 0x{:x}", start, end)))
+                .collect();
+        }
+    }
+
+
+    // Free rcpus: Add container's `rcpus` back to `free_rcpus`
+    if let Some(rcpus) = rcpus {
+        if rcpus != "none" {
+            if let Some(free_rcpus) = parsed_toml.get_mut("free_rcpus") {
+                let ids = free_rcpus.get_mut("ids").and_then(|i| i.as_array_mut());
+                if let Some(ids) = ids {
+                    for rcpu in rcpus.split(',').map(|s| s.trim()) {
+                        if let Ok(rcpu_value) = rcpu.parse::<i64>() {
+                            ids.push(Value::Integer(rcpu_value));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Free pci_bdf: Add container's `pci_bdf` back to `free_pci_devices_bdf`
+    if let Some(pci_bdf) = pci_bdf {
+        if pci_bdf != "none" {
+            if let Ok(bdf_value) = pci_bdf.parse::<i64>() {
+                if let Some(free_pci_devices_bdf) = parsed_toml.get_mut("free_pci_devices_bdf") {
+                    let bdf = free_pci_devices_bdf.get_mut("bdf").and_then(|b| b.as_array_mut());
+                    if let Some(bdf) = bdf {
+                        bdf.push(Value::Integer(bdf_value));
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove the container section
+    parsed_toml.as_table_mut().unwrap().remove(containerid);
+
+    // Remove containerid from `[containerid].ids`
+    if let Some(containerid_section) = parsed_toml.get_mut("containerid") {
+        if let Some(ids) = containerid_section.get_mut("ids").and_then(|ids| ids.as_array_mut()) {
+            ids.retain(|id| id.as_str() != Some(containerid));
+        }
+    }
+
+    // Save the updated state back to state.toml
+    let updated_content = toml::to_string(&parsed_toml)?;
+    fs::write(&file_path, updated_content)?;
+
+    Ok(())
+}
+
+/* //Function to extract memory region to restore and bdf to deassign from the configuartion file of the container
 fn extract_memory_bdf(configuration: &str) -> io::Result<(u64, u64, i64)> {
     // Extract memory size
     let (phys_start, end_address) = extract_memory_size(configuration)?;
@@ -204,22 +335,7 @@ fn remove_bdf(bdf: u8) -> io::Result<()> {
     }
 
     Ok(())
-}
-
-#[allow(dead_code)]
-fn append_message_with_time(message: &str) -> Result<(), Box<dyn Error>> {
-
-    // Open the file in append mode, create it if it doesn't exist
-    let mut timefile = OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open("/usr/share/runPHI/times_file.txt")?;
-    
-    // Write the message and current time to the file, separated by an equal sign
-    writeln!(timefile, "{}", message)?;
-    
-    Ok(())
-}
+} */
 
 // Function to restore memory segment by adding phys_start and end_address to the free_segments.txt file
 // Version 1, doesn't unify the different used memory segments, leading to bugs
@@ -238,7 +354,7 @@ fn append_message_with_time(message: &str) -> Result<(), Box<dyn Error>> {
 
 // Function to restore memory segment by restoring free_segments.txt file
 // Version 2 also aggregates all contiguous memory segments 
-fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
+/* fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
     let path = Path::new(WORKPATH).join(FREE_SEGMENTS_FILE);
     
     // Read the existing entries
@@ -301,7 +417,7 @@ fn parse_segment(line: &str) -> Option<(u64, u64)> {
         }
     }
     None
-}
+} */
 
 pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
     //let start_time = Instant::now();                                //TIME
@@ -356,7 +472,7 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     let mut configuration = String::new();
     file.read_to_string(&mut configuration)?;
 
-    // Extract memory size and BDF (if applicable) based on the contents
+    /* // Extract memory size and BDF (if applicable) based on the contents
     let (phys_start, end_address, bdf) = extract_memory_bdf(&configuration)?;
 
     // Call remove_bdf if bdf is valid
@@ -365,7 +481,9 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     }
 
     // Always call restore_memory_segment
-    restore_memory_segment(phys_start, end_address)?;
+    restore_memory_segment(phys_start, end_address)?; */
+
+    let _ = destroy_update_state(containerid);
 
     // Execute the command to destroy the jailhouse cell using the name of the cell containerid
     let _ = Command::new(JAILHOUSE_PATH)

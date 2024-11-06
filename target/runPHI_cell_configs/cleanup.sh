@@ -1,7 +1,16 @@
 #!/bin/bash
 
 # List of files and directories to keep
-KEEP=("Makefile" "set_runphi_ws.sh" "cleanup.sh" "start_kubelet_flannel.sh" "caronte" "include" "configuration" "available_memory.txt")
+KEEP=("Makefile" "state.toml" "platform-info.toml" "cleanup.sh" "caronte" "include" "configuration")
+
+# Working directory
+TARGET_DIR="/usr/share/runPHI"
+
+# Attempt to change to the desired directory
+cd "$TARGET_DIR" || { 
+  echo "Error: Could not change to directory $TARGET_DIR. Exiting."; 
+  exit 1; 
+}
 
 # Loop through all files and directories in the current directory
 for item in *; do

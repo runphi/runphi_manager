@@ -4,13 +4,14 @@
 // Francesco Tafuri (fran.tafuri@studenti.unina.it)
 //*********************************************
 
-use clap::{CommandFactory, Parser};
+//use clap::{CommandFactory, Parser};
+use clap::Parser;
 use serde_json;
 use std::error::Error;
 use std::fs;
-use std::fs::OpenOptions;
-use std::io::{self, Write};
-use std::process::exit;
+//use std::fs::OpenOptions;
+//use std::io::{self, Write};
+//use std::process::exit;
 
 use liboci_cli::{GlobalOpts, StandardCmd};
 use logging;
@@ -19,7 +20,7 @@ use logging;
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
 // Also check [runc commandline documentation](https://github.com/opencontainers/runc/blob/master/man/runc.8.md) for more explanation
 #[derive(Parser, Debug)]
-#[clap(version = "0.5.0", author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = "0.5.1", author = env!("CARGO_PKG_AUTHORS"))]
 struct Opts {
     #[clap(flatten)]
     global: GlobalOpts,
@@ -46,7 +47,7 @@ mod forwarding;
 
 
 //TODO: convert strings to Path and PathBuf
-const WORKPATH: &str = "/usr/share/runPHI";
+//const WORKPATH: &str = "/usr/share/runPHI";
 const RUNDIR: &str = "/run/runPHI";
 
 fn main() -> Result<(), Box<dyn Error>> {
