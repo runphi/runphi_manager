@@ -56,7 +56,6 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
         .expect("Failed to execute command");
     // 
     // Construct the file path
-    //let start_time = Instant::now();                                 //TIME
     let conffile = format!("{}/config.cfg", crundir);
 
     let file = File::open(conffile.clone())?;
@@ -93,9 +92,6 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
     fs::remove_dir_all(&crundir).ok();
 
-    //writeln!(logfile, "lib.rs after kill_caronte last line")?; //DEBUG
-    //let _ = append_message_with_time(&format!("Time elapsed in Destroy guest is: {:?}", start_time.elapsed())); //TIME
-    //let _ = append_message_with_time("");
     return Ok(());
 }
 

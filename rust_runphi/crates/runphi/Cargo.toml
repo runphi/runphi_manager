@@ -18,5 +18,5 @@ chrono = "0.4.19"
 nix = "0.20.1"
 regex = "1.5.4"
 liboci-cli = { path = "../liboci-cli" }
-backend = { path = "../backend_jailhouse" }
+backend = { path = "../backend_xen" }
 f2b = { path = "../frontend_to_backend" }

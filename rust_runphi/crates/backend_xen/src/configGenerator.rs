@@ -2,8 +2,6 @@
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::process::Command;
-use std::time::{SystemTime, Duration};
 
 use f2b;
 pub mod boot;
@@ -45,8 +43,6 @@ impl Backendconfig {
 //TODO: error handling across this function is a box of shit, handle it
 pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>, Box<dyn Error>> {
 
-    let start_time = SystemTime::now();
-
     let _ = append_message_with_time(&format!("starting config generator")); //TIME
     let mut c = Backendconfig::new();
     c.conffile = format!("{}/config.cfg", fc.crundir);
@@ -59,15 +55,9 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     
 
-    //let start_time = Instant::now();                                                    //TIME
-    let _ = append_message_with_time(&format!("helper start")); //TIME
     let _ = confighelperstart(fc, &mut c, &config);
-    let _ = append_message_with_time(&format!("helper start end")); //TIME
-    //let _ = append_message_with_time(&format!("Time elapsed in helper start is: {:?}", start_time.elapsed())); //TIME
 
-    let _ = append_message_with_time(&format!("boot config start")); //TIME
     let _ = boot::bootconf(fc, &mut c, &mut config);
-    let _ = append_message_with_time(&format!("boot config end")); //TIME
 
 
     // This region of code could be extended with code to retrieve other specific Docker's flags which set CPU limitations
@@ -103,8 +93,6 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
      Here can be implemented: hypervisor agnostic real-time schedulability tests, etc.
     */
 
-    //writeln!(logfile, "Calling CPU config")?;                         //DEBUG
-    //let start_time = Instant::now();                                                    //TIME
     let _ = cpu::cpuconf(fc, &mut c, &quota, &period, &cpus);
     let _ = append_message_with_time(&format!("Finished cpu config")); //TIME
 
@@ -118,60 +106,35 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     let mem_request = fc.jsonconfig["linux"]["resources"]["memory"]["limit"] //Maximum domain memory in MB, (-m, --memory="")
         .as_u64() // Assuming memory values are in unsigned integers
-        .unwrap_or(512); // Set default value to 2G if the value is missing
-                                //writeln!(logfile, "Mem_Requested is: {}", mem_request)?;       //DEBUG
-
-    //let start_time = Instant::now();                                                    //TIME
+        .unwrap_or(512); // Set default value to 512M if the value is missing
     
     //Pass everything to memconfig
     let _ = append_message_with_time(&format!("starting mem config")); //TIME
     let _ = append_message_with_time(&mem_request.to_string()); //TIME
     let _ = mem::memconf(&mut c,&st_req, &mem_request,LVM_GROUP_NAME);
     let _ = append_message_with_time(&format!("finished mem config")); //TIME
-    //let _ = append_message_with_time(&format!("Time elapsed in mem config is: {:?}", start_time.elapsed())); //TIME
-
 
     //-------------------------------------------------------------------------------------
-    //In xen physical device are managed by dom0
+    //In xen physical device are managed by dom0 - unless u wanto to set PCI passthroug
     //-------------------------------------------------------------------------------------
-    //writeln!(logfile, "Memoryend - devconfig start")?;       //DEBUG
-    //let start_time = Instant::now();                                                    //TIME
-    //let _ = append_message_with_time(&format!("starting dev cfg")); //TIME
     //let _ = device::devconfig(&mut c);
-    //let _ = append_message_with_time(&format!("finished dev cfg")); //TIME
-    //let _ = append_message_with_time(&format!("Time elapsed in dev config is: {:?}", start_time.elapsed())); //TIME
 
-    //let start_time = Instant::now();                                                    //TIME
-    //let _ = append_message_with_time(&format!("Time elapsed in boot config is: {:?}", start_time.elapsed())); //TIME
-
-
-    let _ = append_message_with_time(&format!("network config start")); //TIME
     let _ = network::netconfig(&mut c);
-    let _ = append_message_with_time(&format!("network config end")); //TIME
-
-
-    // Guest console is allocated when -t flag is provided
-    // useful for Hypervisor like XEN or BAO which give the possibility
-    // to start Guest with fully fledged OS
-    // Jailhouse gives only the option to start non-root linux cell but the user can connect to it
-    // only through ssh
 
 
 
     //------------------------------------------------------------------------------------
-    //IDK if is needed for XEN, but il'll leave it 'cause i think it's not a problem
+    //If u want to write the console u have to specify this file in the create command in lib 
+    //by sending this command "xl console container_id >> "$output_file" 2>&1 &"
+    //the console is entirly wrote in the output file  
     //------------------------------------------------------------------------------------
-    // If -t flag was specified, call COMMUNICATION backend for further processing
-    // E.G. allocate terminal or ssh shell
-    //writeln!(logfile, "Before guestconsole is empty")?; //DEBUG
+
     if !fc.guestconsole.is_empty() {
         let mut file = fs::File::create(format!("{}/console", fc.crundir))
             .expect("Failed to create console file");
         writeln!(file, "{}", fc.guestconsole).expect("Failed to write console file");
     }
-    //let start_time = Instant::now();                                                    //TIME
 
-    let _ = append_message_with_time(&format!("console created")); //TIME
 
     //------------------------------------------------------------------------------------
     //The comuniccation between the dooms, it should be possible simply by the virtaual networw interface
@@ -180,8 +143,6 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     
     let _ = confighelperend(fc, &mut c, &config);
     
-    let duration = start_time.elapsed().unwrap();
-    let _ = append_time(&duration.as_micros().to_string());
     return Ok(config);
 }
 
@@ -206,19 +167,13 @@ name = \"{}\" \n\n"
 }
 
 fn confighelperend(
-    fc: &f2b::FrontendConfig,
+    _fc: &f2b::FrontendConfig,
     c: &mut Backendconfig,
     _ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
-    //writeln!(logfile, "after regex of helperend")?; //DEBUG
-    let _ = append_message_with_time(&format!("attepting to write config")); //TIME
-    let _ = append_message_with_time(&format!("Writing to {}", &c.conffile));
+    
     //create and write the file
     std::fs::write(&c.conffile, &c.conf)?;
-    let _ = append_message_with_time(&format!("\n{}\n",&c.conf)); //TIME
-
-    let _ = append_message_with_time(&format!("config wrote")); //TIME
-
 
     return Ok(());
 }
@@ -231,20 +186,6 @@ fn append_message_with_time(message: &str) -> Result<(), Box<dyn Error>> {  //TI
     .create(true)
     .append(true)
     .open("/usr/share/runPHI/times_file.txt")?;
-    
-    // Write the message and current time to the file, separated by an equal sign
-    writeln!(timefile, "{}", message)?;
-    
-    Ok(())
-}
-
-fn append_time(message: &str) -> Result<(), Box<dyn Error>> {  //TIME
-
-    // Open the file in append mode, create it if it doesn't exist
-    let mut timefile = OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open("/usr/share/runPHI/times.txt")?;
     
     // Write the message and current time to the file, separated by an equal sign
     writeln!(timefile, "{}", message)?;
