@@ -1,0 +1,18 @@
+[hardware_designs]
+designs = ["pico32", "simple-hardware"]
+
+[pico32]
+versions = ["picov1"]
+
+[simple-hardware]
+versions = ["simplev1"]
+
+[picov1]
+name = "pico32_tg_1.bit"
+region = "0"
+phys_start = "0x70000000"
+size = "0x2000000"
+
+[simplev1]
+name = "trafficgen.bit"
+region="0"

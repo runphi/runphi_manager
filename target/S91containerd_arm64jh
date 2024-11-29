@@ -15,7 +15,8 @@ do_start() {
     	## of containerd to use our config file  
 	/etc/init.d/S60dockerd stop 
 	sleep 1
-	echo "Starting containerd..."
+        export RUNPHI_DEBUG_LEVEL="debug"
+        echo "Starting containerd..."
 	start-stop-daemon --start --quiet --background --make-pidfile \
                 --pidfile $PIDFILE --exec ${DAEMON} -- ${DAEMON_ARGS} \
                 && echo "OK" || echo "FAIL"

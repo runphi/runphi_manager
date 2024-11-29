@@ -1,0 +1,40 @@
+[mem_regions]
+regions = ["IVSHMEM_DEMO_TEMPLATE", "IVSHMEM_TEMPLATE", "UART_TEMPLATE", "RAM0_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
+
+[jailhouse_preample]
+preamble = "QEMU_PREAMBLE"
+
+[IVSHMEM_DEMO_TEMPLATE]
+# No additional parameters
+
+[IVSHMEM_TEMPLATE]
+address = "0x7f900000"
+
+[UART_TEMPLATE]
+phys_start = "0x09000000"
+virt_start = "0x09000000"
+size = "0x1000"
+
+[RAM0_TEMPLATE]
+phys_start = "0x7e900000"
+virt_start = "0"
+size = "0x10000"
+
+[RAM_TEMPLATE]
+phys_start = "0x70000000"
+virt_start = "0x70000000"
+size = "0x7000000"
+
+[COMM_REGION_TEMPLATE]
+# No additional parameters
+
+[devices]
+devs = ["IRQ_CHIP_TEMPLATE", "PCI_DEVICE_TEMPLATE_WITH_DEMO"]
+
+[IRQ_CHIP_TEMPLATE]
+gic_address = "0x08000000"
+uart_pin = "33"
+ivshmem_pin = "141"
+
+[PCI_DEVICE_TEMPLATE_WITH_DEMO]
+ivshmem_bdf = "1"

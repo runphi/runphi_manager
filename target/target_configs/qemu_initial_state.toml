@@ -1,0 +1,14 @@
+[containerid]
+ids = []
+
+[available_memory]
+memory = "0x70000000, 0x7f800000"
+
+[free_segments]
+segments= ["0x70000000, 0x7f800000"]
+
+[free_pci_devices_bdf]
+bdf = [1,2]
+
+[free_rcpus]
+ids = [0,1]

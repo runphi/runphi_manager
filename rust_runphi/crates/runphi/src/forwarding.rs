@@ -18,6 +18,7 @@ use std::process::{exit, Command};
 //TODO: improve code quality here, do not manage program exit inside function
 pub fn runc_forward_ifnecessary(config: &serde_json::Value, containerid: &str) {
     if need_forward_to_runc(&config, &containerid) {
+        logging::log_message(logging::Level::Info,  format!("Forwarding to runc id {}", &containerid).as_str());
         call_runc()
     }
 }
@@ -43,6 +44,7 @@ pub fn call_runc() {
 
 pub fn runc_forward_ifnecessary_delete(config: &serde_json::Value, containerid: &str) {
     if need_forward_to_runc(&config, &containerid) {
+        logging::log_message(logging::Level::Info,  format!("Forwarding to runc id {}", &containerid).as_str());
         let mut runccmd = Command::new("/usr/local/sbin/runc_vanilla");
         for arg in std::env::args().skip(1) {
             runccmd.arg(arg);
@@ -53,10 +55,12 @@ pub fn runc_forward_ifnecessary_delete(config: &serde_json::Value, containerid: 
                     delete_entry_table(&containerid);
                     exit(0);
                 } else {
+                    logging::log_message(logging::Level::Error, "Runc returned an error");
                     exit(1);
                 }
             }
             Err(_) => {
+                logging::log_message(logging::Level::Error, "Runc returned an error");
                 exit(1);
             }
         }

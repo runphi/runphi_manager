@@ -98,6 +98,7 @@ pub fn create(
     }
 
     // Execute config_generator script to generate configuration file
+    logging::log_message(logging::Level::Info,  format!("Creating config for ID {}", &containerid).as_str());
     let ic_p = backend::configGenerator::config_generate(&f2b);
     let ic: f2b::ImageConfig = *ic_p.unwrap();
 
@@ -108,7 +109,8 @@ pub fn create(
     //     .arg(format!("{}/backend/mount {} \"{}\" mount", WORKPATH, containerid, crundir))
     //     .status();
 
-   let _ =  backend::createguest(&f2b, &ic);
+    logging::log_message(logging::Level::Info, format!("Creating guest for ID {}", &containerid).as_str());
+    let _ = backend::createguest(&f2b, &ic);
     //TODO handle return value
 
     // Save info on files required by start guest as well as other commands

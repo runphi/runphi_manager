@@ -1,26 +1,61 @@
 use regex::Regex;
 use std::error::Error;
-use std::fs::File;
-use std::io::Read;
-use std::io;
+use std::fs::{self};
 use std::path::Path;
-use std::io::BufRead;
+use toml::Value;
+
 
 use crate::configGenerator;
 use f2b;
 
-const WORKDIR: &str = "/usr/share/runPHI/";
-const FPGA_FILE: &str = "fpga_info.txt";
+const WORKPATH: &str = "/usr/share/runPHI/";
+const FPGA_FILE: &str =  "fpga_info.toml";
 
 
+pub fn stream_id_config(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn Error>>  {
+
+    let num_stream_ids = if c.used_fpga_regions.is_empty() { 0 } else { 1 };
+    // insert FPGA master stream id for our soft core. temporary
+    let pattern = r"struct jailhouse_pci_device pci_devices\[\d*\];";
+    //let pattern = r"struct jailhouse_memory mem_regions\[\d+\];";
+    let re = Regex::new(&pattern)?;
+
+    let linetoinsert = format!("\tunion jailhouse_stream_id stream_ids[{}];",num_stream_ids); //for now 1
+    if let Some(pos) = re.find(&c.conf) { //try to place after rcpus
+        c.conf
+            .insert_str(pos.end(), &format!("\n{}", linetoinsert));
+    }else{
+        return Err("\"struct jailhouse_memory mem_regions\" not found".into());
+    }
+
+    let stream_id = match num_stream_ids {
+        1 =>r#"
+        .stream_ids = {
+                {
+                    .mmu500.id = 0x1280,
+                    .mmu500.mask_out = 0x3f, // Mask out bits 0..5
+                },
+            },
+        "#,
+        _ => r#"
+        .stream_ids = {
+            },
+        "#,
+    };
+    c.conf
+        .push_str(&stream_id);
+   
+    return Ok(());
+
+}
 /**
 if the requested regions are available, remove them from free and give them to assigned
 return number of regions assigned
 
 if they are not available, do not modify free or assigned and return 0
 */
-pub fn regions_available(free: &mut Vec<u32>, requested: &str, assigned: &mut Vec<u32>) -> usize {
-    let regions: Vec<u32> = requested.split('-').map(|s| s.parse::<u32>().unwrap()).collect();   
+pub fn regions_available(free: &mut Vec<i8>, requested: &str, assigned: &mut Vec<i8>) -> usize {
+    let regions: Vec<i8> = requested.split('-').map(|s| s.parse::<i8>().unwrap()).collect();   
     for r in &regions {
         //check if free contains region
         if !free.contains(&r){
@@ -36,114 +71,142 @@ pub fn regions_available(free: &mut Vec<u32>, requested: &str, assigned: &mut Ve
 }
 
 pub fn fpgaconf(
-    _fc: &f2b::FrontendConfig,
     c: &mut configGenerator::Backendconfig,
     config: &mut f2b::ImageConfig
 ) -> Result<(), Box<dyn Error>> {
 
-    // Check which regions are available
-    let mut file = File::open("/sys/devices/jailhouse/cells/0/fpga_regions_assigned_list")?;
-    let mut output_str = String::new();
-    file.read_to_string(&mut output_str)?;
+    // Check availability
+    let mut free_fpga_regions = c.fpga_regions.clone();
 
-    let output_str = output_str.trim();
-    
-    let mut free_fpga_regions: Vec<u32> = Vec::new();
-
-    // regions might not be consecutive!
-    for part in output_str.split(',').map(str::trim) {
-        if part.contains('-') {
-            let mut range_parts = part.split('-');
-            let start: u32 = range_parts
-                .next()
-                .ok_or("Failed to parse start of CPU range")?
-                .parse()?;
-            let end: u32 = range_parts
-                .next()
-                .ok_or("Failed to parse end of CPU range")?
-                .parse()?;
-            free_fpga_regions.extend(start..=end);
-        } else {
-            let single_value: u32 = part.parse()?;
-            free_fpga_regions.push(single_value);
-        }
-    }
-
-    let mut regionsassigned: Vec<u32> = Vec::new(); 
+    let mut regionsassigned: Vec<i8> = Vec::new(); 
     let mut fpga_bitmask: u32 = 0;
-    let mut nregions = 0;
 
-    // read fpga_info.txt file, which contains info about locally available bitstreams
-    let fpga_regions_file_path = Path::new(WORKDIR).join(FPGA_FILE);
-    let file = File::open(&fpga_regions_file_path)?;
-    let mut lines : Vec<String> =  io::BufReader::new(&file).lines()
-                    .collect::<Result<_, _>>()?;
-    lines.remove(0);//skip header
+    //read fpga-info.toml
+    let config_content = fs::read_to_string(Path::new(WORKPATH).join(FPGA_FILE))?;
+
+    // Parse the content as TOML
+    let parsed_toml: Value = config_content.parse::<Value>()?;
+    let hardware_designs = parsed_toml
+        .get("hardware_designs")
+        .and_then(|table| table.get("designs"))
+        .and_then(|designs| designs.as_array())
+        .ok_or("Failed to read 'hardware_designs.designs' as an array")?;
     
-    for accelerator in &config.accelerators {
+
+    'accelerators: for accelerator in &config.accelerators {
         // for each accelerator
         if accelerator.bitstream.is_empty(){  // if we were given core name, and not bstream directly
-            for line in &lines{
-                let values: Vec<&str> = line.split(',').collect();                
-                if values[0] == accelerator.core {
-                    nregions = regions_available(&mut free_fpga_regions, values[1], &mut regionsassigned);
-                    if nregions != 0 {
-                        for n in 0..nregions {
-                            config.bitstreams.push(values[2+n].to_string());
-                            config.regions.push(regionsassigned[regionsassigned.len()-nregions + n] as i64); //last n assigned
-                        }
-                        c.fpga_regions+=nregions;
-                        break;
+            if let Some(_found_design) = hardware_designs.iter().find(|&design| design.as_str() == Some(&accelerator.core)){  
+                let versions_toml = parsed_toml
+                .get(&accelerator.core)
+                .and_then(|design| design.get("versions"))
+                .and_then(|v| v.as_array())
+                .ok_or("Failed to read 'versions' for the target design")?;
+
+                let versions: Vec<String> = versions_toml
+                .iter()
+                .filter_map(|val| val.as_str().map(|s| s.to_string()))
+                .collect();
+    
+                for version in &versions{
+
+                    let name = parsed_toml
+                    .get(version)
+                    .and_then(|v| v.get("name"))
+                    .and_then(|n| n.as_str())
+                    .ok_or("Failed to convert 'name' to string")?;
+
+                    let region = parsed_toml
+                    .get(version)
+                    .and_then(|v| v.get("region"))
+                    .and_then(|r| r.as_integer().or_else(|| r.as_str().and_then(|s| s.parse::<i64>().ok())))
+                    .and_then(|num| num.try_into().ok())
+                    .ok_or("Failed to read 'region'")?; 
+                    
+                    if !free_fpga_regions.contains(&region){
+                        continue;
                     }
+                    free_fpga_regions.retain(|x| x != &region);
+                    regionsassigned.push(region);
+
+                    config.bitstreams.push(name.to_string());
+                    config.regions.push(region);
+                    
+                    // memory
+                    if let Some(phys_start) = parsed_toml
+                    .get(version)
+                    .and_then(|v| v.get("phys_start"))
+                    .and_then(|value| value.as_str())
+                    {
+                        if let Some(mem_size) = parsed_toml
+                        .get(version)
+                        .and_then(|v| v.get("size"))
+                        .and_then(|value| value.as_str())
+                        {
+                            let virt_start = parsed_toml
+                                .get(version)
+                                .and_then(|v| v.get("virt_start"))
+                                .and_then(|value| value.as_str())
+                                .map(|address| address.to_string())
+                                .unwrap_or_else(|| "0".to_string());
+                            c.soft_core_mem.push_str(format!("{}; {}; {}",phys_start, virt_start,mem_size).as_str());    
+                        }else{
+                            return Err("Unable to program FPGA: memory size for accelerator not present".to_owned().into());
+                        }
+                    }
+                    continue 'accelerators;
                 }
+            
+                return Err("Unable to program FPGA: region unavailable".to_owned().into());
+            
+            }else{
+                return Err("Unable to program FPGA: bitstream not found".to_owned().into());
             }
-        } else{ // we were given bitstream inside the path
-            let file_name = Path::new(&accelerator.bitstream) //we were given bitstream path!
+        } 
+        else{ // we were given bitstream inside the path
+            let file_name = Path::new(&accelerator.bitstream) 
                     .file_name()
                     .unwrap()
                     .to_str()
                     .unwrap();
-
-            nregions = regions_available(&mut free_fpga_regions, &accelerator.region, &mut regionsassigned);
-            // it's either 1 or 0
-            if nregions != 0 {
+            
+            let region = &accelerator.region.parse::<i8>()?; //??
+            if free_fpga_regions.contains(region) {
+                
+                free_fpga_regions.retain(|x| x != region);
+                regionsassigned.push(*region);
                 config.bitstreams.push(file_name.to_string());
-                config.regions.push(regionsassigned[regionsassigned.len()-1] as i64); //last one
-                c.fpga_regions+=1;
+                config.regions.push((*region).into());
+                
+                // if any accelerator requires a RAM, insert here
+                // FORMAT: phys_address; starting_address; size
+                // ASSUMING FOR NOW JUST 1
+                for accelerator in &config.accelerators{
+                    if !accelerator.starting_phys_address.is_empty(){
+                        let linetoinsert = if accelerator.acc_starting_vaddress.is_empty() {
+                            &format!("{}; 0; {}",accelerator.starting_phys_address, accelerator.mem_size)
+                        }else{
+                            &format!("{}; {}; {}",accelerator.starting_phys_address, accelerator.acc_starting_vaddress, accelerator.mem_size)
+                        };
+                        c.soft_core_mem.push_str(linetoinsert);
+                        break;
+                    }
+                }
+            } 
+            else{
+                return Err("Unable to program FPGA: not enough space available or bitstream not found".to_owned().into());
             }
-        }    
-         if nregions == 0{ 
-            // this accelerator can't be loaded
-            return Err("Unable to program FPGA: not enough space available or bitstream not found".to_owned().into());
-        }    
+        } 
     }
- 
+    
+    c.used_fpga_regions = regionsassigned.clone();
+    c.fpga_regions = free_fpga_regions;
 
-    // Insert values into config! 
-
-    //This is only the size of the .cpus field so always 1
-    let pattern1 = r"__u64 cpus\[1\];";
-    let pattern2 = r"__u64 rcpus\[1\];"; // ne ho bisogno???
-    let linetoinsert = "\t__u64 fpga_regions[1];";
-
-    // Compile a regular expression to match the pattern and insert the cpus
-    let re1 = Regex::new(&pattern1)?;
-    let re2 = Regex::new(&pattern2)?;
-    if let Some(pos) = re1.find(&c.conf) {
-        c.conf
-            .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
-    } else if let Some(pos) = re2.find(&c.conf) {
-        c.conf
-        .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
-    }else{
-        return Err("\"__u64 cpus[1] or __u64 rcpus[1]\" not found".into());
-        //        return Err("\"__u64 cpus[1]\" not found".into());
-    }
-
+    
      for &region in &regionsassigned {
         fpga_bitmask |= 1 << region;
     } 
-    
+
     let hex_str = format!("{:x}", fpga_bitmask);
 
     c.conf

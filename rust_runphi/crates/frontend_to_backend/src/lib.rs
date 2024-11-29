@@ -38,7 +38,6 @@ impl FrontendConfig {
     }
 }
 
-
 //Structure to hold information about an hardware accelerator
 #[derive(Debug, Deserialize)]
 pub struct Accelerator {
@@ -57,7 +56,14 @@ pub struct Accelerator {
     
     #[serde[default]] 
     pub region: String,
+
+    //If it is a soft core, with its own specific RAM
+    #[serde[default]] 
+    pub starting_phys_address: String,
     
+    #[serde[default]] 
+    pub mem_size: String,
+
 }
 
 impl Default for Accelerator {
@@ -68,6 +74,8 @@ impl Default for Accelerator {
             acc_inmate: String::new(),
             bitstream: String::new(),
             region :String::new(),
+            starting_phys_address: String::new(),
+            mem_size :String::new()
         }
     }
 }
@@ -105,10 +113,11 @@ pub struct ImageConfig {
     pub netconf: String,
     #[serde(default)]
     pub starting_vaddress: String,
+    // This lines are needed to include the "net" and "rpu_req" field
     #[serde(default)]
-    //TODO: handle default or missing values in a decent way
-    // This line is needed to include the "net" field
     pub net: String,
+    #[serde(default)]
+    pub rpu_req: bool,
     //if the image contains the description of an accelerator
     #[serde[default]] 
     //pub accelerator: Accelerator
@@ -119,12 +128,12 @@ pub struct ImageConfig {
     pub bitstreams: Vec<String>,
 
     #[serde(skip)]
-    pub regions : Vec<i64>
-
-} 
+    pub regions : Vec<i8>
+  
+    // TODO: handle default or missing values in a decent way
+}
 impl ImageConfig {
     pub fn get_from_file(mountpoint: &str) -> Self {
-
         // parsing configuration variables from the file
         //TODO: here is the case to parse also a node default used in the case the container does not specify this
         //TODO: parametrize boot boot.bin and config.json
@@ -133,12 +142,12 @@ impl ImageConfig {
             Err(_) => String::new(),
         };
         let mut config: ImageConfig = serde_json::from_str(&json_str).unwrap();
-
         if !config.inmate.is_empty() {
             config.inmate = format!("{}{}", mountpoint, config.inmate);
-        } else {
+        }else {
             config.inmate = format!("{}/boot/boot.bin", mountpoint);
         }
+
         for accelerator in &mut config.accelerators {
             if !accelerator.bitstream.is_empty(){
                 accelerator.bitstream = format!("{}{}", mountpoint, accelerator.bitstream);
@@ -147,7 +156,7 @@ impl ImageConfig {
                 accelerator.acc_inmate = format!("{}{}", mountpoint, accelerator.acc_inmate);
             }
         }
-       
+
         return config;
     }
 }

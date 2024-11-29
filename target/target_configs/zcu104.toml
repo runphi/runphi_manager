@@ -1,0 +1,51 @@
+[mem_regions]
+regions = ["IVSHMEM_TEMPLATE", "UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "RAM_SOFTCORE_TEMPLATE", "SHM_TEMPLATE", "COMM_REGION_TEMPLATE", "SYSTEM_COUNTER_TEMPLATE"]
+
+[jailhouse_preample]
+preamble = "ULTRASCALE_PREAMBLE"
+
+[IVSHMEM_TEMPLATE]
+address = "0x060000000"
+
+[UART_TEMPLATE]
+phys_start = "0xff010000"
+virt_start = "0xff010000"
+size = "0x1000"
+
+[TCMA_TEMPLATE]
+phys_start = "0xffe00000"
+virt_start = "0xffe00000"
+size = "0x00010000"
+
+[TCMB_TEMPLATE]
+phys_start = "0xffe20000"
+virt_start = "0xffe20000"
+size = "0x00010000"
+
+[RAM_TEMPLATE]
+phys_start = "0x3ed00000"
+virt_start = "0"
+size = "0x8000000"
+
+[RAM_SOFTCORE_TEMPLATE]
+# something?
+
+[SHM_TEMPLATE]
+phys_start = "0x46d00000"
+virt_start = "0x46d00000"
+size = "0x10000"
+
+[COMM_REGION_TEMPLATE]
+# No additional parameters
+
+
+[devices]
+devs = ["IRQ_CHIP_BOARD_TEMPLATE", "PCI_DEVICE_EMPTY_TEMPLATE"]
+
+[IRQ_CHIP_BOARD_TEMPLATE]
+gic_address = "0xf9010000"
+uart_pin = "33"
+ivshmem_pin = "146"
+
+[PCI_DEVICE_TEMPLATE]
+ivshmem_bdf = "1"

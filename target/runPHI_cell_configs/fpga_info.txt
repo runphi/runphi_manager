@@ -1,4 +1,0 @@
-name,regions,bitstreams
-simple,0,design.bit
-soft-core,1,softcore.bit
-big-soft-core,1-2,core1.bit,core2.bit
