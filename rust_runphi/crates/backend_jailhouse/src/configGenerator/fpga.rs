@@ -48,27 +48,6 @@ pub fn stream_id_config(c: &mut configGenerator::Backendconfig) -> Result<(), Bo
     return Ok(());
 
 }
-/**
-if the requested regions are available, remove them from free and give them to assigned
-return number of regions assigned
-
-if they are not available, do not modify free or assigned and return 0
-*/
-pub fn regions_available(free: &mut Vec<i8>, requested: &str, assigned: &mut Vec<i8>) -> usize {
-    let regions: Vec<i8> = requested.split('-').map(|s| s.parse::<i8>().unwrap()).collect();   
-    for r in &regions {
-        //check if free contains region
-        if !free.contains(&r){
-            return 0;
-        }
-    } 
-    for r in &regions {
-        assigned.push(*r);
-    }
-    //remove from free
-    free.retain(|x| !assigned.contains(x));
-    return regions.len();
-}
 
 pub fn fpgaconf(
     c: &mut configGenerator::Backendconfig,
