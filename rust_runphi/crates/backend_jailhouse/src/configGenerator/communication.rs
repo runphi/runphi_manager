@@ -1,7 +1,7 @@
 //*********************************************
 // Authors: Marco Barletta (marco.barletta@unina.it)
 //*********************************************
-
+//DEAD FOR NOW COMMUNICATION WAS INCLUDED IN PREAMBLE TEMPLATE
 use regex::Regex;
 use std::error::Error;
 

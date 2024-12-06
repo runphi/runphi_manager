@@ -1,22 +1,33 @@
 //*********************************************
-// Authors: Marco Barletta (marco.barletta@unina.it)
+// Authors: 
+// Marco Barletta (marco.barletta@unina.it)
+// Francesco Tafuri (fran.tafuri@studenti.unina.it)
 //*********************************************
 
-use clap::{CommandFactory, Parser};
+//use clap::{CommandFactory, Parser};
+use clap::Parser;
 use serde_json;
 use std::error::Error;
 use std::fs;
-use std::fs::OpenOptions;
-use std::io::{self, Write};
-use std::process::exit;
+
+//LIBRARIES FOR log_timestamp_with_memory_mmap function
+//use std::fs::OpenOptions;
+//use std::io::Write;
+//use std::os::unix::io::AsRawFd;
+//use std::time::{SystemTime, UNIX_EPOCH};
+//use nix::libc::{mmap, munmap, MAP_SHARED, PROT_READ};
+
+//use std::ptr;
+//use std::process::exit;
 
 use liboci_cli::{GlobalOpts, StandardCmd};
+use logging;
 
 // High-level commandline option definition
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
 // Also check [runc commandline documentation](https://github.com/opencontainers/runc/blob/master/man/runc.8.md) for more explanation
 #[derive(Parser, Debug)]
-#[clap(version = "0.5.0", author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = "0.5.2", author = env!("CARGO_PKG_AUTHORS"))]
 struct Opts {
     #[clap(flatten)]
     global: GlobalOpts,
@@ -41,44 +52,25 @@ mod frontend {
 }
 mod forwarding;
 
+
 //TODO: convert strings to Path and PathBuf
-const WORKPATH: &str = "/usr/share/runPHI";
+//const WORKPATH: &str = "/usr/share/runPHI";
 const RUNDIR: &str = "/run/runPHI";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Check if there is at least one runtime available, exit otherwise
-    
-    // TODO: "configuration" file is needed to check if a specific backend is enabled
-    // currently, only Jailhouse is supported. Replace "configuration" file with an efficient mechanism
-    // that is backend dependent (e.g., Jailhouse enabled should be checked with jailhouse.ko
-    // loaded)
+    //TODO: if no backend is available at the moment, forward to runc
 
-    let _ = match fs::read_to_string(format!("{}/configuration", WORKPATH)) {
-        Ok(content) => {
-            if content.trim().is_empty() {
-                writeln!(io::stderr(), "No runPHI runtime available, forwarding")?;
-                forwarding::call_runc();
-                exit(10);
-            } else {
-                Some(content)
-            }
-        }
-        Err(err) => {
-            eprintln!("Error reading file: {}", err);
-            forwarding::call_runc();
-            exit(9);
-        }
-    };
+    //let log_file = "/root/times.txt";
+    //let mem_address = 0xFF250000;
+    //let mem_size = 4096; // 4 KB (minimum granularity of mmap)
+    //("start main", log_file, mem_address, mem_size).unwrap();
 
     let containerid;
     let mut config: serde_json::Value = serde_json::Value::Null;
-    let mut logfile = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/usr/share/runPHI/log.txt")?;
-
     let opts = Opts::parse();
-    let _app = Opts::command();
+    //let _app = Opts::command();
+
+    logging::init_logger(Some(std::path::PathBuf::from(std::path::Path::new("/usr/share/runPHI/log.txt"))));//opts.global.log);
 
     let _ = match opts.subcmd {
         SubCommand::Standard(cmd) => match *cmd {
@@ -91,20 +83,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             //TODO: fix common part handling
             StandardCmd::Create(create) => {
                 containerid = create.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Creating with id {}", &containerid); //DEBUG
-                let _ = writeln!(logfile, "Parse json"); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Creating with id {}", &containerid).as_str());
+                logging::log_message(logging::Level::Debug,  "Parse json");
                 let config_json = fs::read_to_string(format!(
                     "{}/config.json",
-                    &create.bundle.to_string_lossy().into_owned()
-                ))?;
+                    &create.bundle.to_string_lossy().into_owned()))?;
                 config = serde_json::from_str(&config_json)?;
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
-                let _ = writeln!(
-                    logfile,
-                    "Not forwarded containerid creation {}",
-                    &containerid
-                ); //DEBUG
-                   // If we are here, there was no forwarding to runc, hence we start runphi management
+
+                // If we are here, there was no forwarding to runc, hence we start runphi management
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 //TODO: fix?, this should not exist
                 fs::remove_dir_all(&crundir).ok();
@@ -115,15 +102,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             StandardCmd::Start(start) => {
                 containerid = start.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Starting with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Starting with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
-                let _ = writeln!(logfile, "Starting with id not forwarded {}", &containerid); //DEBUG
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::start(&containerid, &crundir);
             }
             StandardCmd::Kill(kill) => {
                 containerid = kill.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Killing with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Killing with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::kill(&containerid, &crundir);
@@ -131,7 +117,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             StandardCmd::Delete(delete) => {
                 containerid = delete.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "Deleting with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("Deleting with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary_delete(&config, &containerid);
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::delete(&containerid, &crundir);
@@ -139,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             StandardCmd::State(state) => {
                 containerid = state.container_id.chars().take(24).collect::<String>();
-                let _ = writeln!(logfile, "State with id {}", &containerid); //DEBUG
+                logging::log_message(logging::Level::Info,  format!("State with id {}", &containerid).as_str());
                 forwarding::runc_forward_ifnecessary(&config, &containerid);
                 let crundir = format!("{}/{}", RUNDIR, containerid);
                 let _ = frontend::commands::state(&containerid, &crundir);
@@ -182,5 +168,64 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     } */
     };
 
+    //log_timestamp_with_memory_mmap("end main", log_file, mem_address, mem_size).unwrap();
     return Ok(());
 }
+
+/* #[allow(dead_code)]
+pub fn log_timestamp_with_memory_mmap(
+    phase: &str,
+    log_file: &str,
+    mem_address: u64,
+    mem_size: usize,
+) -> std::io::Result<()> {
+    // Get the current time in nanoseconds since UNIX epoch
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
+    let timestamp = now.as_secs() as u128 * 1_000_000_000 + now.subsec_nanos() as u128;
+
+    // Open /dev/mem
+    let file = std::fs::File::open("/dev/mem")?;
+    let fd = file.as_raw_fd();
+
+    // Map the memory region
+    let mapped_addr = unsafe {
+        mmap(
+            std::ptr::null_mut(),
+            mem_size,
+            PROT_READ,
+            MAP_SHARED,
+            fd,
+            mem_address as i64,
+        )
+    };
+
+    if mapped_addr == nix::libc::MAP_FAILED {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    // Read the value at the memory address
+    let value_at_address: u32 = unsafe { *(mapped_addr as *const u32) };
+
+    // Unmap the memory region
+    unsafe {
+        munmap(mapped_addr, mem_size);
+    }
+
+    // Open the log file in append mode
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file)?;
+
+    // Write the phase, timestamp, and memory value to the file
+    writeln!(
+        file,
+        "{}: {} ns, memory[0x{:X}] = 0x{:08X}",
+        phase, timestamp, mem_address, value_at_address
+    )?;
+
+    Ok(())
+} */
