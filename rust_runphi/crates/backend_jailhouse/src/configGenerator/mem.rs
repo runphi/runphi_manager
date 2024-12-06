@@ -373,6 +373,5 @@ fn count_mem_regions<P: AsRef<Path>>(file_path: P, mem_options: &MemOptions) -> 
         }
     }
 
-
     Ok(count)
 }

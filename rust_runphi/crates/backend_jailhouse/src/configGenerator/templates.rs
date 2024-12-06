@@ -35,7 +35,7 @@ pub const RAM_SOFTCORE_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const SHM_TEMPLATE: &'static str = r#"
+/* pub const SHM_TEMPLATE: &'static str = r#"
 /* SHM */ {
     .phys_start = {phys_start},
     .virt_start = {virt_start},
@@ -43,7 +43,18 @@ pub const SHM_TEMPLATE: &'static str = r#"
     .flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
 		JAILHOUSE_MEM_ROOTSHARED,
 },
+"#; */
+
+pub const SHM_TEMPLATE: &'static str = r#"
+/* SHM */ {
+	.phys_start = 0x46d00000,
+	.virt_start = 0x46d00000,
+	.size = 0x10000,
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_ROOTSHARED, 
+},
 "#;
+
 
 pub const TCMA_TEMPLATE: &'static str = r#"
 /* TCM 0-A */  {
@@ -272,7 +283,6 @@ struct {
 		},
 	},
 "#;
-
 
 // Function to create a HashMap of all available templates
 pub fn get_templates_map() -> HashMap<&'static str, &'static str> {

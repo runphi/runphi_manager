@@ -12,6 +12,9 @@ bdf = [1,2]
 
 [free_rcpus]
 ids = [0,1]
+<<<<<<< HEAD
 
 [free_fpga_regions]
 ids = [0]
+=======
+>>>>>>> origin/refactoring

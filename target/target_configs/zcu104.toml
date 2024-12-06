@@ -1,5 +1,9 @@
 [mem_regions]
+<<<<<<< HEAD
 regions = ["IVSHMEM_TEMPLATE", "UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "RAM_SOFTCORE_TEMPLATE", "SHM_TEMPLATE", "COMM_REGION_TEMPLATE", "SYSTEM_COUNTER_TEMPLATE"]
+=======
+regions = ["IVSHMEM_TEMPLATE", "UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
+>>>>>>> origin/refactoring
 
 [jailhouse_preample]
 preamble = "ULTRASCALE_PREAMBLE"
@@ -27,6 +31,7 @@ phys_start = "0x3ed00000"
 virt_start = "0"
 size = "0x8000000"
 
+<<<<<<< HEAD
 [RAM_SOFTCORE_TEMPLATE]
 # something?
 
@@ -41,6 +46,13 @@ size = "0x10000"
 
 [devices]
 devs = ["IRQ_CHIP_BOARD_TEMPLATE", "PCI_DEVICE_EMPTY_TEMPLATE"]
+=======
+[COMM_REGION_TEMPLATE]
+# No additional parameters
+
+[devices]
+devs = ["IRQ_CHIP_BOARD_TEMPLATE", "PCI_DEVICE_TEMPLATE"]
+>>>>>>> origin/refactoring
 
 [IRQ_CHIP_BOARD_TEMPLATE]
 gic_address = "0xf9010000"

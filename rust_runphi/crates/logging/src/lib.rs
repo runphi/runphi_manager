@@ -99,7 +99,7 @@ impl Logger {
             }
 
             // Optionally, print to the console (for demo purposes)
-            //println!("{}", log_entry);
+            println!("{}", log_entry);
         }
     }
 
@@ -131,7 +131,7 @@ fn parse_log_level(level_str: &str) -> Option<Level> {
 // Function to initialize the logger in the global state
 pub fn init_logger(path: Option<PathBuf>) {
     // Get the logging level from the environment variable
-    let level_str = env::var("RUNPHI_DEBUG_LEVEL").unwrap_or_else(|_| "info".to_string());      
+    let level_str = env::var("RUNPHI_DEBUG_LEVEL").unwrap_or_else(|_| "info".to_string());        
     // Parse the logging level from the string
     let level = parse_log_level(&level_str).unwrap_or(Level::Info); // Fallback to Info if invalid
 

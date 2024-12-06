@@ -9,8 +9,15 @@ use clap::Parser;
 use serde_json;
 use std::error::Error;
 use std::fs;
+
+//LIBRARIES FOR log_timestamp_with_memory_mmap function
 //use std::fs::OpenOptions;
-//use std::io::{self, Write};
+//use std::io::Write;
+//use std::os::unix::io::AsRawFd;
+//use std::time::{SystemTime, UNIX_EPOCH};
+//use nix::libc::{mmap, munmap, MAP_SHARED, PROT_READ};
+
+//use std::ptr;
 //use std::process::exit;
 
 use liboci_cli::{GlobalOpts, StandardCmd};
@@ -20,7 +27,7 @@ use logging;
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
 // Also check [runc commandline documentation](https://github.com/opencontainers/runc/blob/master/man/runc.8.md) for more explanation
 #[derive(Parser, Debug)]
-#[clap(version = "0.5.1", author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = "0.5.2", author = env!("CARGO_PKG_AUTHORS"))]
 struct Opts {
     #[clap(flatten)]
     global: GlobalOpts,
@@ -52,6 +59,11 @@ const RUNDIR: &str = "/run/runPHI";
 
 fn main() -> Result<(), Box<dyn Error>> {
     //TODO: if no backend is available at the moment, forward to runc
+
+    //let log_file = "/root/times.txt";
+    //let mem_address = 0xFF250000;
+    //let mem_size = 4096; // 4 KB (minimum granularity of mmap)
+    //("start main", log_file, mem_address, mem_size).unwrap();
 
     let containerid;
     let mut config: serde_json::Value = serde_json::Value::Null;
@@ -156,5 +168,64 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     } */
     };
 
+    //log_timestamp_with_memory_mmap("end main", log_file, mem_address, mem_size).unwrap();
     return Ok(());
 }
+
+/* #[allow(dead_code)]
+pub fn log_timestamp_with_memory_mmap(
+    phase: &str,
+    log_file: &str,
+    mem_address: u64,
+    mem_size: usize,
+) -> std::io::Result<()> {
+    // Get the current time in nanoseconds since UNIX epoch
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
+    let timestamp = now.as_secs() as u128 * 1_000_000_000 + now.subsec_nanos() as u128;
+
+    // Open /dev/mem
+    let file = std::fs::File::open("/dev/mem")?;
+    let fd = file.as_raw_fd();
+
+    // Map the memory region
+    let mapped_addr = unsafe {
+        mmap(
+            std::ptr::null_mut(),
+            mem_size,
+            PROT_READ,
+            MAP_SHARED,
+            fd,
+            mem_address as i64,
+        )
+    };
+
+    if mapped_addr == nix::libc::MAP_FAILED {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    // Read the value at the memory address
+    let value_at_address: u32 = unsafe { *(mapped_addr as *const u32) };
+
+    // Unmap the memory region
+    unsafe {
+        munmap(mapped_addr, mem_size);
+    }
+
+    // Open the log file in append mode
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file)?;
+
+    // Write the phase, timestamp, and memory value to the file
+    writeln!(
+        file,
+        "{}: {} ns, memory[0x{:X}] = 0x{:08X}",
+        phase, timestamp, mem_address, value_at_address
+    )?;
+
+    Ok(())
+} */
