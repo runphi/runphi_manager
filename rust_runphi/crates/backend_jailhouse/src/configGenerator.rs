@@ -8,8 +8,8 @@ use std::error::Error;
 //use std::fs::{File, self, OpenOptions};
 use std::fs;
 use std::io::Write;
-//use std::time::Instant;   //TIME CLOCK MONOTONIC
-//use std::process::Command;
+use std::time::Instant;   //TIME CLOCK MONOTONIC
+use std::process::Command;
 use std::str;
 use toml::{Value, map::Map};
 use std::path::{Path, PathBuf};
@@ -82,7 +82,10 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     c.rpu_req = config.rpu_req;
 
     // Read the state ogf the machine from the state.toml file (in particular free memory and free bdfs)
+    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let (segments, bdf, rcpus) = retrieve_state()?;
+    //log_elapsed_time(start,"Duration of retrieve state"); //TAKE THE END TIME OF THE PHASE
+
     // Update the struct
     c.segments = segments;
     c.bdf = bdf;
@@ -90,7 +93,9 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //c.preamble = preamble;
 
     logging::log_message(logging::Level::Debug, format!("Config helper start for id {}", &fc.containerid).as_str());
+    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let _ = confighelperstart(fc, &mut c, &config);
+    //log_elapsed_time(start, "Duration of helperstart"); //TAKE THE END TIME OF THE PHASE
 
     // This region of code could be extended with code to retrieve other specific Docker's flags which set CPU limitations
     // cpus where allow guest execution set by Docker's flag 'cpuset-cpus'
@@ -122,9 +127,9 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     */
 
     logging::log_message(logging::Level::Debug, format!("Configuring CPU for id {}", &fc.containerid).as_str());
-    
+    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     //If rpu_req is true we are requesting RPUs and not CPUs
-    //c.rpu_req=true; //For testing purposes
+    c.rpu_req=true; //FOR TESTING PURPOSES ALWAYS ALLOCATE RPUs, COMMENT IN THE FINAL CODE
     if c.rpu_req{
         let rpus=cpus;
         cpus=0.0;
@@ -136,7 +141,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
         //let _ = rpu::rpuconf(&mut c, &rpus);
     }    
     //logging::log_message(logging::Level::Debug, format!("\nconfiguration after cpuconf is  {}", c.conf).as_str());
-
+    //log_elapsed_time(start,"Duration of configuration of CPU"); //TAKE THE END TIME OF THE PHASE
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
     // Extract values from the JSON structure
     //In the json structure only limit is created by kubernetes memory reservation doesn't exist so I'll comment it
@@ -162,10 +167,16 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     //Pass everything to memconfig
     logging::log_message(logging::Level::Debug, format!("Configuring memory for id {}", &fc.containerid).as_str());
-    let _ = mem::memconfig(&mut c, &mem_request_hex); //temporary
     
+    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    let _ = mem::memconfig(&mut c, &mem_request_hex);
+    //log_elapsed_time(start,"Duration of configuration of Memory"); //TAKE THE END TIME OF THE PHASE
+
     logging::log_message(logging::Level::Debug, format!("Configuring Device for id {}", &fc.containerid).as_str());
-    let _ = device::devconfig(&mut c); //temporary
+    
+    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    let _ = device::devconfig(&mut c);
+    //log_elapsed_time(start,"Duration of configuration of Device"); //TAKE THE END TIME OF THE PHASE
 
     let _ = boot::bootconfbackend(fc, &mut config);
 
@@ -189,6 +200,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _ = communication::communicationconfig(&mut c); //communication è stato incluso direttamente nel preamble
 
     // Call save_state and log the result
+    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     match save_state(
         &fc.containerid,
         &c.segments,
@@ -200,11 +212,14 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
         Ok(_) => logging::log_message(logging::Level::Debug, format!("State saved successfully for id {}", &fc.containerid).as_str()),
         Err(_e) => logging::log_message(logging::Level::Debug, format!("Failed to save state for id {}", &fc.containerid).as_str()),
     }
+    //log_elapsed_time(start,"Duration of save state"); //TAKE THE END TIME OF THE PHASE
 
+    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let _ = confighelperend(fc, &mut c, &config);
+    //log_elapsed_time(start,"Duration of compile"); //TAKE THE END TIME OF THE PHASE
 
     //logging::log_message(logging::Level::Debug, format!("Finishing configuration for id {}", &fc.containerid).as_str());
-    //logging::log_message(logging::Level::Debug, format!("\nactual configuration is  {}", c.conf).as_str());
+    logging::log_message(logging::Level::Trace, format!("\nactual configuration is  {}", c.conf).as_str());
     
     return Ok(config);
 }
@@ -286,34 +301,62 @@ fn confighelperend(
     _ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
     
-    // To make possible also to use config-generator by its own, and not only by scripts,
-    // Here a module which checks the regularity of "$crundir" should be implemented
+    // Append closing brace to the configuration
     c.conf.push_str("\n};\n");
 
-    // Modify the config file based on the operating system
-    // TODO: Temporary mockup, to test linux conf we replace an already prepared .c for linux
+    // Modify the config file based on the operating system (mockup example)
     let pattern = r#"\.name = \".*\""#;
     let _re = Regex::new(pattern).unwrap();
 
-    std::fs::write(&c.conffile, &c.conf)?;
+    // Write the configuration to the .c file
+    //std::fs::write(&c.conffile, &c.conf)?;
 
-    // jailhouse needs a .cell file
-    // put the config.c by generate_guest_config in $JAILHOUSE/config dir and build
-    let path_to_compile = format!("{}/tocompile.c", WORKPATH);
+    // Define paths in fc.crundir, with the correct naming convention
+    let path_to_compile = Path::new(&fc.crundir).join("tocompile.c");
+    let cell_file_path = Path::new(&fc.crundir).join(format!("{}.cell", fc.containerid));
+    let obj_file_path = Path::new(&fc.crundir).join(format!("{}.o", fc.containerid));
+
+    // Write the config to tocompile.c in fc.crundir
     std::fs::write(&path_to_compile, &c.conf)?;
 
-    // Compile the config file
-    //TODO: handle compilation error
-    let _ = std::process::Command::new("make")
-        .current_dir(format!("{}/", WORKPATH))
-        .output();
-    std::fs::copy(
-        format!("{}/tocompile.cell", WORKPATH),
-        &format!("{}/{}.cell", fc.crundir, fc.containerid),
-    )?; // Copy the compiled cell file to the crundir
-    return Ok(());
-}
+    // Compile the .c file to .o
+    let compile_status = Command::new("gcc")
+        .args(&[
+            "-Werror",
+            "-Wall",
+            "-Wextra",
+            "-D__LINUX_COMPILER_TYPES_H",
+            "-I/usr/share/runPHI/include",   // Specify the absolute include path
+            "-c",                            // Compile without linking
+            path_to_compile.to_str().unwrap(),
+            "-o",
+            obj_file_path.to_str().unwrap(),
+        ])
+        .status()?;
 
+    if !compile_status.success() {
+        logging::log_message(logging::Level::Error, &format!("Compilation failed!!!"));
+        return Err("Compilation failed".into());
+    }
+
+    // Convert the .o file to .cell directly in fc.crundir
+    let objcopy_status = Command::new("objcopy")
+        .args(&[
+            "-O",
+            "binary",
+            "--remove-section=.note.gnu.property",
+            obj_file_path.to_str().unwrap(),
+            cell_file_path.to_str().unwrap(),
+        ])
+        .status()?;
+
+    if !objcopy_status.success() {
+        logging::log_message(logging::Level::Error, &format!("Conversion to .cell file failed!!!"));
+        return Err("Conversion to .cell file failed".into());
+    }
+
+    Ok(())
+}
 
 fn retrieve_state() -> Result<(Vec<String>, Vec<i8>, Vec<i8>), Box<dyn std::error::Error>> {
     let file_path = PathBuf::from(WORKPATH).join(STATEFILE);
@@ -475,4 +518,17 @@ fn save_state(
     fs::write(&file_path, updated_content)?;
 
     Ok(())
+}
+
+// Function to log the elapsed time with a custom message
+#[allow(dead_code)]
+fn log_elapsed_time(start: Instant, message: &str) {
+    // Calculate elapsed time from the provided start time
+    let elapsed_ns = start.elapsed().as_nanos();
+
+    // Log the elapsed time along with the message
+    logging::log_message(
+        logging::Level::Debug,
+        &format!("{} :[{} ns]",  message , elapsed_ns),
+    );
 }

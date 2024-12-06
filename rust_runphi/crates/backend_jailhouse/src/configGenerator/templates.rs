@@ -240,6 +240,15 @@ struct {
 	},
 "#;
 
+pub const SHM_TEMPLATE: &'static str = r#"
+/* SHM */ {
+	.phys_start = 0x46d00000,
+	.virt_start = 0x46d00000,
+	.size = 0x10000,
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_ROOTSHARED, 
+},
+"#;
 
 // Function to create a HashMap of all available templates
 pub fn get_templates_map() -> HashMap<&'static str, &'static str> {
@@ -261,6 +270,7 @@ pub fn get_templates_map() -> HashMap<&'static str, &'static str> {
     templates.insert("TCMB_TEMPLATE", TCMB_TEMPLATE);
 	templates.insert("QEMU_PREAMBLE_TEMPLATE", QEMU_PREAMBLE_TEMPLATE);
 	templates.insert("ULTRASCALE_PREAMBLE_TEMPLATE", ULTRASCALE_PREAMBLE_TEMPLATE);
+	templates.insert("SHM_TEMPLATE", SHM_TEMPLATE);
 
 	templates
 }

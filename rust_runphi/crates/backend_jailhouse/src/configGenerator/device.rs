@@ -88,7 +88,7 @@ pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn E
 
             // Substitute common fields
             template = template.replace("{ivshmem_bdf}", &bdf_used.to_string());
-
+            // AGGIUSTARE PER NON PRENDERE ANCHE IL TEMPLATE DI DEVICE SE C.NET=NONE
             // Apply custom fields from TOML for the current device template
             if let Some(params) = config.get(template_name) {
                 let params_str = params.as_table()
