@@ -42,7 +42,8 @@ pub struct Backendconfig {
     pub conffile: String,
     pub net: String,
     pub rpu_req: bool,
-    pub segments: Vec<String>,   
+    pub segments: Vec<String>, 
+    pub used_segments: Vec<String>,  
     pub bdf: Vec<i8>,
     pub rcpus: Vec<i8>,
     pub used_rcpus: Vec<i8>,
@@ -61,6 +62,7 @@ impl Backendconfig {
             net: String::new(),
             rpu_req: false,
             segments: Vec::new(),  
+            used_segments: Vec::new(),
             bdf: Vec::new(),
             rcpus: Vec::new(),
             used_rcpus: Vec::new(),
@@ -125,7 +127,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
         .as_f64()
         .unwrap_or(10000.0);
 
-    logging::log_message(logging::Level::Debug, format!("_cpu_set={}, period={}, quota={}", _cpu_set,period,quota).as_str());
+    //logging::log_message(logging::Level::Debug, format!("_cpu_set={}, period={}, quota={}", _cpu_set,period,quota).as_str());
 
     // cpus is a floating point number
     // If the backend does not support fractional allots, that's a backend matter
@@ -177,7 +179,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     let mem_request_hex = format!("0x{:x}", mem_request);
 
     //Save the value of segments 
-    let segments_before=c.segments.clone();
+    //let segments_before=c.segments.clone();
     //Save the value of the bdf we use
     let bdf_used = if c.net != "none" {
         c.bdf.iter().min().cloned()
@@ -221,12 +223,12 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     match save_state(
         &fc.containerid,
         &c.segments,
-        &segments_before,
+        &c.used_segments,
         &c.rcpus,
         &c.fpga_regions,
         bdf_used,
         &c.used_rcpus,
-        &c.used_fpga_regions
+        &c.used_fpga_regions,
     ) {
         Ok(_) => logging::log_message(logging::Level::Debug, format!("State saved successfully for id {}", &fc.containerid).as_str()),
         Err(_e) => logging::log_message(logging::Level::Debug, format!("Failed to save state for id {}", &fc.containerid).as_str()),
@@ -397,7 +399,7 @@ fn retrieve_state() -> Result<(Vec<String>, Vec<i8>, Vec<i8>, Vec<i8>), Box<dyn 
 fn save_state(
     fc_containerid: &str,
     c_segments: &Vec<String>,
-    segments_before: &Vec<String>,
+    c_used_segments: &Vec<String>,
     c_rcpus: &Vec<i8>,
     c_fpga_regions: &Vec<i8>,
     bdf_used: Option<i8>,
@@ -442,35 +444,9 @@ fn save_state(
     let new_container_section = {
         let mut container_data = Map::new();
 
-        // Parse start and end addresses from `segments_before` and `c_segments`
-        let (start_before, _end_before) = {
-            let parts: Vec<&str> = segments_before[0].split(", ").collect();
-            (
-                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).expect("Invalid start address"),
-                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16).expect("Invalid end address"),
-            )
-        };
-
-        let (start_after, _end_after) = {
-            let parts: Vec<&str> = c_segments[0].split(", ").collect();
-            (
-                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).expect("Invalid start address"),
-                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16).expect("Invalid end address"),
-            )
-        };
-
-        // Calculate the used memory range (segments_before - c_segments)
-        let used_start = start_before;
-        let used_end = start_after;
-        //logging::log_message(logging::Level::Debug, &format!("Used memory start: 0x{:x}, end: 0x{:x}", used_start, used_end));
-
-        // Format the result as a memory segment string
-        let used_memory = format!("0x{:x}, 0x{:x}", used_start, used_end);
-        //logging::log_message(logging::Level::Debug, &format!("Final used_memory string: {:?}", used_memory));
-
         // Insert into container_data
+        let used_memory = c_used_segments.join("; ");
         container_data.insert("memory".to_string(), Value::String(used_memory));
-
 
         // Set `rcpus`
         let rcpus_value = if c_used_rcpus.is_empty() {

@@ -61,7 +61,10 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
         if let Some(segments) = segments {
             // Add the new memory segment to the list
             if let Some(memory) = memory {
-                segments.push(Value::String(memory));
+                let regions: Vec<String> = memory.split(';').map(String::from).collect();
+                for r in regions{
+                    segments.push(Value::String(r));
+               }
             }
 
             // Parse segments into tuples of (start, end)

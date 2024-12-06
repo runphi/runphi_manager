@@ -182,7 +182,7 @@ pub fn memconfig(
     let file_path = Path::new(WORKPATH).join(format!("platform-info.toml"));
 
     let mem_options = get_options(&c);
-    //logging::log_message(logging::Level::Debug,format!("options is: rpu_req={}, no_ram={}, skip_ivshmem={}, soft_core={}", mem_options.rpu_req, mem_options.no_ram_region, mem_options.skip_ivshmem, mem_options.soft_core).as_str());
+    //::log_message(logging::Level::Debug,format!("options is: rpu_req={}, no_ram={}, skip_ivshmem={}, soft_core={}", mem_options.rpu_req, mem_options.no_ram_region, mem_options.skip_ivshmem, mem_optiologgingns.soft_core).as_str());
     // Insert line into the config file; could go after rcpus or after fpga_regions
     let pattern_rcpu = r"__u64 rcpus\[\d*\];";
     let pattern_fpga = r"__u64 fpga_regions\[\d*\];";
@@ -213,6 +213,47 @@ pub fn memconfig(
 
     match load_config(&file_path) {
         Ok(config) => {
+            // For soft core RAM
+            
+            if mem_options.soft_core{
+                let mem_params: Vec<&str> = c.soft_core_mem.split(';').map(|s| s.trim()).collect();
+                let mem_start = u64::from_str_radix(mem_params[0].trim_start_matches("0x"), 16)?;
+                let mem_end = mem_start +  u64::from_str_radix(mem_params[2].trim_start_matches("0x"), 16)?;
+                logging::log_message(logging::Level::Debug,format!("mem_start=0x{:x}, mem_end 0x{:x};",mem_start,mem_end).as_str());
+                if let Some((segment_index, chosen_segment)) = c.segments.iter().enumerate()
+                    .find_map(|(i, seg)| {
+
+                        let parts: Vec<&str> = seg.split(", ").collect();
+                        if parts.len() != 2 { return None; }  // Segment is not in the correct format
+
+                        // Parse start and end of segment
+                        let start = u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).ok()?;
+                        let end = u64::from_str_radix(parts[1].trim_start_matches("0x"), 16).ok()?;
+
+                        logging::log_message(logging::Level::Debug,format!("now examinign segment start=0x{:x}, end 0x{:x};",start,end).as_str());
+
+                        //check if soft core RAM is included in this segment
+                        if start <= mem_start && end >= mem_end{
+                            Some((i,(start,end)))
+                        }else{
+                            None
+                        }
+                    })
+                {
+                    logging::log_message(logging::Level::Debug,format!("segment found, start=0x{:x}, end 0x{:x};", chosen_segment.0, chosen_segment.1).as_str());
+
+                    // if segment is found
+                    if chosen_segment.0 !=mem_start{
+                        c.segments[segment_index] = format!("0x{:x}, 0x{:x}", chosen_segment.0, mem_start);        
+                    }
+                    if chosen_segment.1 != mem_end{
+                        c.segments.insert(segment_index+1, format!("0x{:x}, 0x{:x}", mem_end, chosen_segment.1));
+                    }      
+                    logging::log_message(logging::Level::Debug,format!("segments now: {:?};", c.segments).as_str());
+
+                }
+                c.used_segments.push(format!("0x{:x}, 0x{:x}", mem_start, mem_end));  
+            }
 
             // Calculate the base address based on the lowest value in c.bdf
             if let Some(&min_bdf) = c.bdf.iter().filter(|&&b| b > 0).min() {
@@ -243,7 +284,8 @@ pub fn memconfig(
                     mem_request_size
                 };
 
-                //FIX STO FATTO DEI SEGMENTI
+                
+
                 // Find a suitable segment in `c.segments`
                 if let Some((segment_index, chosen_segment)) = c.segments.iter().enumerate()
                     .find_map(|(i, seg)| {
@@ -265,7 +307,7 @@ pub fn memconfig(
                     // Update the chosen segment's start address and push remaining free space back to `c.segments`
                     let new_start = chosen_segment.0 + required_size;
                     c.segments[segment_index] = format!("0x{:x}, 0x{:x}", new_start, chosen_segment.1);
-
+                    c.used_segments.push(format!("0x{:x}, 0x{:x}", chosen_segment.0 , new_start));
                     // Set the physical start addresses
                     let ram0_phys_start = format!("0x{:x}", chosen_segment.0);
                     let ram_phys_start = if has_ram0_template {
@@ -273,6 +315,8 @@ pub fn memconfig(
                     } else {
                         ram0_phys_start.clone()
                     };
+                    //logging::log_message(logging::Level::Debug,format!("segments now: {:?};", c.segments).as_str());
+
 
                     match generate_config(&config, mem_request_hex, &address_hex, &ram0_phys_start, &ram_phys_start, &mem_options, &c.soft_core_mem) {
                         Ok(config_string) => {
