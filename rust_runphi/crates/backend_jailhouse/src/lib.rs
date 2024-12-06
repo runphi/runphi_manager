@@ -6,15 +6,9 @@
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use std::error::Error;
-<<<<<<< HEAD
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-=======
 use std::fs::{self};
 //use std::io::Read;
 use std::path::Path;
->>>>>>> d073669 (Updated to runphi 0.5.2 from branch refactoring)
 use std::process::Command;
 use std::str;
 use toml::Value;
@@ -59,28 +53,6 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
                 segments.push(Value::String(memory));
             }
 
-<<<<<<< HEAD
-    let end_address = phys_start + 0x10000 + size_2;
-
-    Ok((phys_start, end_address))
-}
-
-// Version 1 - causes bug
-/* fn extract_bdf(configuration: &str) -> i64 {
-    // Find the second PCI device entry
-    let networking_device_pattern = r#"{ /* IVSHMEM 00:01.0 (networking) */"#;
-    if let Some(start_index) = configuration.find(networking_device_pattern) {
-        let start_slice = &configuration[start_index..];
-        let bdf_pattern = ".bdf = ";
-        if let Some(bdf_index) = start_slice.find(bdf_pattern) {
-            let bdf_slice = &start_slice[bdf_index + bdf_pattern.len()..];
-            if let Some(end_index) = bdf_slice.find(',') {
-                let bdf_expression = &bdf_slice[..end_index].trim();
-                if let Some(shift_index) = bdf_expression.find("<<") {
-                    let bdf_number = &bdf_expression[..shift_index].trim();
-                    if let Ok(bdf) = bdf_number.parse::<i64>() {
-                        return bdf;
-=======
             // Parse segments into tuples of (start, end)
             let mut parsed_segments: Vec<(u64, u64)> = segments
                 .iter()
@@ -137,36 +109,11 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
                         if let Ok(rcpu_value) = rcpu.parse::<i64>() {
                             ids.push(Value::Integer(rcpu_value));
                         }
->>>>>>> d073669 (Updated to runphi 0.5.2 from branch refactoring)
                     }
                 }
             }
         }
     }
-<<<<<<< HEAD
-    -1 // Default value if BDF extraction fails
-} */
-// Version 2, more streamlined, it just searches for the second occurrence of the .bdf field and takes the id
-fn extract_bdf(configuration: &str) -> i64 {
-    let mut bdf_count = 0;
-
-    for line in configuration.lines() {
-        if line.trim_start().starts_with(".bdf =") {
-            bdf_count += 1;
-            if bdf_count == 2 {
-                if let Some(bdf_value) = line.split_whitespace().nth(2) {
-                    if let Ok(bdf) = bdf_value.parse::<i64>() {
-                        return bdf;
-                    }
-                }
-            }
-        }
-    }
-
-    -1 // Return -1 if the second .bdf line is not found or if parsing fails
-}
-=======
->>>>>>> d073669 (Updated to runphi 0.5.2 from branch refactoring)
 
     // Free pci_bdf: Add container's `pci_bdf` back to `free_pci_devices_bdf`
     if let Some(pci_bdf) = pci_bdf {
@@ -192,104 +139,11 @@ fn extract_bdf(configuration: &str) -> i64 {
         }
     }
 
-<<<<<<< HEAD
-    // Open the file in append mode, create it if it doesn't exist
-    let mut timefile = OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open("/usr/share/runPHI/times_file.txt")?;
-    
-    // Write the message and current time to the file, separated by an equal sign
-    writeln!(timefile, "{}", message)?;
-    
-    Ok(())
-}
-
-// Function to restore memory segment by adding phys_start and end_address to the free_segments.txt file
-// Version 1, doesn't unify the different used memory segments, leading to bugs
-/* fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
-    let path = Path::new(WORKPATH).join(FREE_SEGMENTS_FILE);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(true)
-        .open(&path)?;
-
-    writeln!(file, "0x{:X}, 0x{:X}", phys_start, end_address)?;
-=======
     // Save the updated state back to state.toml
     let updated_content = toml::to_string(&parsed_toml)?;
     fs::write(&file_path, updated_content)?;
->>>>>>> d073669 (Updated to runphi 0.5.2 from branch refactoring)
 
     Ok(())
-} */
-
-// Function to restore memory segment by restoring free_segments.txt file
-// Version 2 also aggregates all contiguous memory segments 
-fn restore_memory_segment(phys_start: u64, end_address: u64) -> io::Result<()> {
-    let path = Path::new(WORKPATH).join(FREE_SEGMENTS_FILE);
-    
-    // Read the existing entries
-    let mut segments = Vec::new();
-    if let Ok(file) = File::open(&path) {
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            let line = line?;
-            if let Some((start, end)) = parse_segment(&line) {
-                segments.push((start, end));
-            }
-        }
-    }
-
-    // Add the new segment
-    segments.push((phys_start, end_address));
-
-    // Remove segments where start == end
-    segments.retain(|&(start, end)| start != end);
-
-    // Sort segments by start address
-    segments.sort_unstable_by_key(|&(start, _)| start);
-
-    // Merge contiguous segments
-    let mut merged_segments = Vec::new();
-    if let Some(mut current) = segments.first().cloned() {
-        for &(start, end) in &segments[1..] {
-            if current.1 == start {
-                // Merge contiguous segments
-                current.1 = end;
-            } else {
-                merged_segments.push(current);
-                current = (start, end);
-            }
-        }
-        merged_segments.push(current);
-    }
-
-    // Write the updated segments back to the file
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&path)?;
-
-    for (start, end) in merged_segments {
-        writeln!(file, "0x{:X}, 0x{:X}", start, end)?;
-    }
-
-    Ok(())
-}
-
-// Support function to restore_memory_segment
-fn parse_segment(line: &str) -> Option<(u64, u64)> {
-    let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-    if parts.len() == 2 {
-        if let (Ok(start), Ok(end)) = (u64::from_str_radix(parts[0].trim_start_matches("0x"), 16), 
-                                       u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)) {
-            return Some((start, end));
-        }
-    }
-    None
 }
 
 pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
