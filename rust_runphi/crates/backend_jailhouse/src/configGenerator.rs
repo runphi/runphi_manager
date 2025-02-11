@@ -28,7 +28,7 @@ use crate::configGenerator::templates::*;
 const WORKPATH: &str = "/usr/share/runPHI";
 //const RUNDIR: &str = "/run/runPHI";
 const STATEFILE: &str = "state.toml";
-const CONFIG_FILE: &str = "platform-info.toml";
+const CONFIG_FILE: &str = "platform_info.toml";
 
 
 // This structure holds all the information related to the configuration of the partitioned container
