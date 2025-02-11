@@ -244,9 +244,9 @@ fn confighelperstart(
         let parsed_toml: Value = config_content.parse::<Value>()?;
 
         logging::log_message(logging::Level::Debug, format!("Retrieving preamble for id {}", &fc.containerid).as_str());
-        // Retrieve the `preamble` value under `[jailhouse_preample]`
+        // Retrieve the `preamble` value under `[jailhouse_preamble]`
         if let Some(preamble) = parsed_toml
-            .get("jailhouse_preample")
+            .get("jailhouse_preamble")
             .and_then(|section| section.get("preamble"))
             .and_then(|p| p.as_str())
         {
@@ -266,7 +266,7 @@ fn confighelperstart(
             c.conf.push_str(&filled_template);
             logging::log_message(logging::Level::Debug, format!("Conf preamble created for id {}", &fc.containerid).as_str());
         } else {
-            return Err("Field 'preamble' not found in [jailhouse_preample]".into());
+            return Err("Field 'preamble' not found in [jailhouse_preamble]".into());
         }
 
     } else if ic.os_var == "linux" {
@@ -532,3 +532,21 @@ fn log_elapsed_time(start: Instant, message: &str) {
         &format!("{} :[{} ns]",  message , elapsed_ns),
     );
 }
+
+// TEST MODULE 
+/* #[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        let fc = ..; // Initialize fc
+        let image_config = ..; // Expected result
+        let result = config_generate(&fc);
+
+        match result {
+            Ok(config) => assert_eq!(config, image_config),
+            Err(e) => panic!("Test failed with error: {:?}", e),
+        }
+    }
+} */

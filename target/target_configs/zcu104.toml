@@ -1,7 +1,7 @@
 [mem_regions]
 regions = ["IVSHMEM_TEMPLATE", "UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
 
-[jailhouse_preample]
+[jailhouse_preamble]
 preamble = "ULTRASCALE_PREAMBLE"
 
 [IVSHMEM_TEMPLATE]
