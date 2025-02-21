@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List of files and directories to keep
-KEEP=("Makefile" "state.toml" "platform-info.toml" "cleanup.sh" "caronte" "include" "configuration")
+KEEP=("Makefile" "state.toml" "platform_info.toml" "cleanup.sh" "caronte" "include" "configuration")
 
 # Working directory
 TARGET_DIR="/usr/share/runPHI"

@@ -1,7 +1,7 @@
 [mem_regions]
 regions = ["IVSHMEM_DEMO_TEMPLATE", "IVSHMEM_TEMPLATE", "UART_TEMPLATE", "RAM0_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
 
-[jailhouse_preample]
+[jailhouse_preamble]
 preamble = "QEMU_PREAMBLE"
 
 [IVSHMEM_DEMO_TEMPLATE]

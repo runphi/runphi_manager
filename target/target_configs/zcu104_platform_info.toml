@@ -1,11 +1,11 @@
 [mem_regions]
 regions = ["IVSHMEM_TEMPLATE", "UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
 
-[jailhouse_preample]
+[jailhouse_preamble]
 preamble = "ULTRASCALE_PREAMBLE"
 
 [IVSHMEM_TEMPLATE]
-address = "0x060000000"
+address = "0x07e000000" #"0x060000000" was before
 
 [UART_TEMPLATE]
 phys_start = "0xff010000"
