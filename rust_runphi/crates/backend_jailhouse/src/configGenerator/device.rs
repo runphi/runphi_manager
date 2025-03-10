@@ -25,7 +25,7 @@ pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn E
     // Insert line into the config file
     let pattern = r"struct jailhouse_memory mem_regions\[\d+\];";
 
-    let file_path = Path::new(WORKPATH).join(format!("platform-info.toml"));
+    let file_path = Path::new(WORKPATH).join(format!("platform_info.toml"));
     let templates_map = get_templates_map(); // Get all templates
     
     // Get minimum BDF from c.bdf

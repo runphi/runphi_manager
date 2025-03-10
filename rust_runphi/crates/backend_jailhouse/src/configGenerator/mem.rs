@@ -142,7 +142,7 @@ pub fn memconfig(
     c: &mut configGenerator::Backendconfig,
     mem_request_hex: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let file_path = Path::new(WORKPATH).join(format!("platform-info.toml"));
+    let file_path = Path::new(WORKPATH).join(format!("platform_info.toml"));
 
     // Insert line into the config file
     let pattern = r"__u64 rcpus\[\d*\];";

@@ -147,7 +147,7 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
-    //logging::log_message(logging::Level::Debug, format!("Start guest for cell with id {}", containerid).as_str());
+    logging::log_message(logging::Level::Debug, format!("Start guest for cell with id {}", containerid).as_str());
     //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let os_content = std::fs::read_to_string(format!("{}/OS", crundir))?;
     let os = os_content.trim();
@@ -166,7 +166,7 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
 }
 
 pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
-    //let start_time = Instant::now();                                //TIME
+    //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let _ = Command::new(JAILHOUSE_PATH)
         .arg("cell")
         .arg("shutdown")
@@ -188,7 +188,7 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
 
-/*     //let start_time = Instant::now();                                 //TIME
+/*  //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let configuration_path = format!("/run/runPHI/{}/config{}.conf", containerid, containerid);
 
     // Convert the file path to a PathBuf
