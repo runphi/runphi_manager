@@ -11,4 +11,4 @@ segments= ["0x3ed00000, 0x46d00000"]
 bdf = [1,2]
 
 [free_rcpus]
-ids = [0,1]
+ids = [0]

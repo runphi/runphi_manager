@@ -1,10 +1,10 @@
 //*********************************************
-// Authors: Francesco Boccola (f.boccola@studenti.unina.it)
+// Authors: Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 use std::collections::HashMap;
 
-pub const RAM_TEMPLATE: &'static str = r#"
+/* pub const RAM_TEMPLATE: &'static str = r#"
 /* RAM */ {
     .phys_start = {phys_start},
     .virt_start = {virt_start},
@@ -13,19 +13,29 @@ pub const RAM_TEMPLATE: &'static str = r#"
         JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_DMA |
         JAILHOUSE_MEM_LOADABLE,
 },
+"#; */
+
+pub const RAM_TEMPLATE: &'static str = r#"
+/* RAM */ {
+	.phys_start = {phys_start},
+	.virt_start = {virt_start},
+	.size = {size},
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE,
+},
 "#;
 
 pub const RAM0_TEMPLATE: &'static str = r#"
 /* RAM */ {
-    .phys_start = {phys_start},
-    .virt_start = {virt_start},
-    .size = {size},
-    .flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
-        JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE,
+	.phys_start = {phys_start},
+	.virt_start = {virt_start},
+	.size = {size},
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE,
 },
 "#;
 
-pub const TCMA_TEMPLATE: &'static str = r#"
+/* pub const TCMA_TEMPLATE: &'static str = r#"
 /* TCM 0-A */  {
     .phys_start = {phys_start},
     .virt_start = {virt_start},
@@ -45,24 +55,44 @@ pub const TCMB_TEMPLATE: &'static str = r#"
 		JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE |
 		JAILHOUSE_MEM_TCM_B,
 },
+"#; */
+
+pub const TCMA_TEMPLATE: &'static str = r#"
+/* TCM 0-A */ {
+	.phys_start = {phys_start},
+	.virt_start = {virt_start},
+	.size = {size},
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE,
+},
+"#;
+
+pub const TCMB_TEMPLATE: &'static str = r#"
+/* TCM 0-B */ {
+	.phys_start = {phys_start},
+	.virt_start = {virt_start},
+	.size = {size},
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_EXECUTE | JAILHOUSE_MEM_LOADABLE,
+},
 "#;
 
 pub const UART_TEMPLATE: &'static str = r#"
 /* UART */ {
-    .phys_start = {phys_start},
-    .virt_start = {virt_start},
-    .size = {size},
-    .flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
-        JAILHOUSE_MEM_IO | JAILHOUSE_MEM_ROOTSHARED,
+	.phys_start = {phys_start},
+	.virt_start = {virt_start},
+	.size = {size},
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_IO | JAILHOUSE_MEM_ROOTSHARED,
 },
 "#;
 
 pub const COMM_REGION_TEMPLATE: &'static str = r#"
 /* communication region */ {
-    .virt_start = 0x80000000,
-    .size = 0x00001000,
-    .flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
-        JAILHOUSE_MEM_COMM_REGION,
+	.virt_start = 0x80000000,
+	.size = 0x00001000,
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_COMM_REGION,
 },
 "#;
 
@@ -211,12 +241,14 @@ struct {
 "#;
 
 pub const ULTRASCALE_PREAMBLE_TEMPLATE: &'static str = r#"
-#include "cell.h"
+#include "types.h"
+#include "cell-config.h"
 
 struct {
 	struct jailhouse_cell_desc cell;
 	__u64 cpus[1];
 	__u64 rcpus[1];
+	union jailhouse_stream_id stream_ids[2];
 } __attribute__((packed)) config = {
 	.cell = {
 		.signature = JAILHOUSE_CELL_DESC_SIGNATURE,
@@ -230,6 +262,7 @@ struct {
 		.num_memory_regions = ARRAY_SIZE(config.mem_regions),
 		.num_irqchips = ARRAY_SIZE(config.irqchips),
 		.num_pci_devices = ARRAY_SIZE(config.pci_devices),
+		.num_stream_ids = ARRAY_SIZE(config.stream_ids),
 
 		.console = {
 			.address = 0xff010000,
@@ -247,6 +280,16 @@ pub const SHM_TEMPLATE: &'static str = r#"
 	.size = 0x10000,
 	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
 		JAILHOUSE_MEM_ROOTSHARED, 
+},
+"#;
+
+pub const SYSTEM_COUNTER_TEMPLATE: &'static str = r#"
+/* SYSTEM COUNTER */ {
+	.phys_start = 0xff250000,
+	.virt_start = 0xff250000,
+	.size = 0x1000,
+	.flags = JAILHOUSE_MEM_READ | JAILHOUSE_MEM_WRITE |
+		JAILHOUSE_MEM_IO | JAILHOUSE_MEM_ROOTSHARED,
 },
 "#;
 
@@ -271,6 +314,7 @@ pub fn get_templates_map() -> HashMap<&'static str, &'static str> {
 	templates.insert("QEMU_PREAMBLE_TEMPLATE", QEMU_PREAMBLE_TEMPLATE);
 	templates.insert("ULTRASCALE_PREAMBLE_TEMPLATE", ULTRASCALE_PREAMBLE_TEMPLATE);
 	templates.insert("SHM_TEMPLATE", SHM_TEMPLATE);
+	templates.insert("SYSTEM_COUNTER_TEMPLATE", SYSTEM_COUNTER_TEMPLATE);
 
 	templates
 }

@@ -1,6 +1,6 @@
 //*********************************************
 // Authors: Marco Barletta (marco.barletta@unina.it)
-//          Francesco Boccola (f.boccola@studenti.unina.it)
+//          Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 use regex::Regex;
@@ -110,6 +110,13 @@ fn generate_config(
                         template = template.replace("{address}", base_address);
                     }
 
+                    // Auto indent templates
+                    template = template
+                    .lines()
+                    .map(|line| format!("\t\t{}", line))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+
                     // Process additional parameters from the config
                     if let Some(params) = config.get(template_name) {
                         let params_str = params.as_table()
@@ -156,13 +163,13 @@ pub fn memconfig(
     // Use format! to include the variable
     let linetoinsert = format!("\tstruct jailhouse_memory mem_regions[{}];", num_regions); 
 
-    // Compile a regular expression to match the pattern and insert the cpus
+    // Compile a regular expression to match the pattern and insert the mem_regions
     let re = Regex::new(&pattern)?;
     if let Some(pos) = re.find(&c.conf) {
         c.conf
             .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
     } else {
-        return Err("\"struct jailhouse_cell_desc cell\" not found".into());
+        return Err("\"pattern __u64 rcpus\" not found".into());
     }
 
     match load_config(&file_path) {
@@ -233,7 +240,7 @@ pub fn memconfig(
                         Ok(config_string) => {
                             // Wrap the configuration in the .mem_regions jailhouse field
                             let wrapped_config = format!(
-                                ".mem_regions = {{\n{}\n}},\n",
+                                "\n\t.mem_regions = {{{}\n\t}},\n",
                                 config_string
                             );
                             // Append the generated configuration to c.conf

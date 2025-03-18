@@ -1,6 +1,6 @@
 //*********************************************
 // Authors: Marco Barletta (marco.barletta@unina.it)
-//          Francesco Boccola (f.boccola@studenti.unina.it)
+//          Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 //use regex::Regex;
