@@ -1,6 +1,6 @@
 //*********************************************
 // Authors: Marco Barletta (marco.barletta@unina.it)
-//          Francesco Boccola (f.boccola@studenti.unina.it)
+//          Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 use regex::Regex;
@@ -75,13 +75,14 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //THIS IS THE ACCESS TO JSON.CONFIG FROM DOCKER
     logging::log_message(logging::Level::Debug, format!("Reading the config.json inside the container for id {}", &fc.containerid).as_str());
     let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint));
+    logging::log_message(logging::Level::Debug, format!("The mountpoint for the container with id {} is {}", &fc.containerid, &fc.mountpoint).as_str());
     //Clone the value of config.net (from the internal .json) to c.net
     c.net = config.net.clone();
 
     // Do we require rpus?
     c.rpu_req = config.rpu_req;
 
-    // Read the state ogf the machine from the state.toml file (in particular free memory and free bdfs)
+    // Read the state of the machine from the state.toml file (in particular free memory and free bdfs)
     //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let (segments, bdf, rcpus) = retrieve_state()?;
     //log_elapsed_time(start,"Duration of retrieve state"); //TAKE THE END TIME OF THE PHASE
@@ -129,7 +130,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     logging::log_message(logging::Level::Debug, format!("Configuring CPU for id {}", &fc.containerid).as_str());
     //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
     //If rpu_req is true we are requesting RPUs and not CPUs
-    c.rpu_req=true; //FOR TESTING PURPOSES ALWAYS ALLOCATE RPUs, COMMENT IN THE FINAL CODE
+    //c.rpu_req=true; //FOR TESTING PURPOSES ALWAYS ALLOCATE RPUs, COMMENT IN THE FINAL CODE
     if c.rpu_req{
         let rpus=cpus;
         cpus=0.0;

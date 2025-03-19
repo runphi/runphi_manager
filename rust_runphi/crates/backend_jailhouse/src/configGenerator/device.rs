@@ -1,6 +1,6 @@
 //*********************************************
 // Authors: Marco Barletta (marco.barletta@unina.it)
-//          Francesco Boccola (f.boccola@studenti.unina.it)
+//          Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 use crate::configGenerator;
@@ -40,14 +40,19 @@ pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn E
 
     // Initialize num_pci_dev with zero
     let mut num_pci_dev = 0;
+    let mut num_irq_chip = 0;
 
     // Fill the variable with the number of pci_devices inferred from the actually used templates
     for dev in devs {
         if let Some(dev_name) = dev.as_str() {
             match dev_name {
-                "IRQ_CHIP_TEMPLATE" | "IRQ_CHIP_BOARD_TEMPLATE" | "PCI_DEVICE_EMPTY_TEMPLATE" => {
+                "PCI_DEVICE_EMPTY_TEMPLATE" => {
                     // Skip these devices
                     continue;
+                },
+                "IRQ_CHIP_TEMPLATE" | "IRQ_CHIP_BOARD_TEMPLATE" => {
+                    // Count this device as one
+                    num_irq_chip += 1;
                 },
                 "PCI_DEVICE_TEMPLATE_WITH_DEMO" => {
                     // Count this device as two
@@ -65,16 +70,16 @@ pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn E
     let linetoinsert = if c.net == "none" {
         "\tstruct jailhouse_irqchip irqchips[1];\n\tstruct jailhouse_pci_device pci_devices[0];"
     } else {    
-        &format! ("\tstruct jailhouse_irqchip irqchips[1];\n\tstruct jailhouse_pci_device pci_devices[{}];", num_pci_dev)
+        &format! ("\tstruct jailhouse_irqchip irqchips[{}];\n\tstruct jailhouse_pci_device pci_devices[{}];",num_irq_chip ,num_pci_dev)
     };
 
     // Compile a regular expression to match the pattern and insert the pci_devices
     let re = Regex::new(&pattern)?;
     if let Some(pos) = re.find(&c.conf) {
         c.conf
-            .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
+            .insert_str(pos.end(), &format!("\n{}", linetoinsert));
     } else {
-        return Err("\"struct jailhouse_memory mem_regions not found".into());
+        return Err("\"pattern struct jailhouse_memory mem_regions not found".into());
     }
 
     // Placeholder insertions for each device in devs

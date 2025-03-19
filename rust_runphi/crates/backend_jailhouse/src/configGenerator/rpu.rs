@@ -1,5 +1,5 @@
 //*********************************************
-// Authors: Francesco Boccola (f.boccola@studenti.unina.it)
+// Authors: Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 //use regex::Regex;

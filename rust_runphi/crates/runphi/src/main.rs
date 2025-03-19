@@ -27,7 +27,7 @@ use logging;
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
 // Also check [runc commandline documentation](https://github.com/opencontainers/runc/blob/master/man/runc.8.md) for more explanation
 #[derive(Parser, Debug)]
-#[clap(version = "0.5.2", author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = "0.5.4", author = env!("CARGO_PKG_AUTHORS"))]
 struct Opts {
     #[clap(flatten)]
     global: GlobalOpts,

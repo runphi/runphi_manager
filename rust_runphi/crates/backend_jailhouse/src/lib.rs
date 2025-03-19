@@ -1,6 +1,6 @@
 //*********************************************
 // Authors: Marco Barletta (marco.barletta@unina.it)
-//          Francesco Boccola (f.boccola@studenti.unina.it)
+//          Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 use nix::sys::signal::Signal;
@@ -24,6 +24,19 @@ const WORKPATH: &str = "/usr/share/runPHI";
 //const RUNDIR: &str = "/run/runPHI";
 const JAILHOUSE_PATH: &str = "/root/jailhouse/tools/jailhouse";
 const STATEFILE: &str = "state.toml";
+
+// Reads the state file and returns the rcpus string for the given containerid.
+fn get_rcpu_for_container(containerid: &str) -> Result<String, Box<dyn Error>> {
+    let file_path = Path::new(WORKPATH).join(STATEFILE);
+    let content = fs::read_to_string(&file_path)?;
+    let parsed: Value = content.parse::<Value>()?;
+    if let Some(container) = parsed.get(containerid) {
+        if let Some(rcpu) = container.get("rcpus").and_then(|v| v.as_str()) {
+            return Ok(rcpu.to_string());
+        }
+    }
+    Err(format!("rcpus for container {} not found", containerid).into())
+}
 
 fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
     // Load and parse the current state from state.toml
@@ -154,6 +167,9 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
     if os == "linux" {
         println!("Linux non-root cell {} has already been running, connect to Guest through ssh root from localhost to port number exposed", containerid);
     } else {
+        let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "start", containerid);
+        logging::log_message(logging::Level::Debug, format!("Starting cell with id {}", containerid).as_str());
+        logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
         let _ = Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("start")
@@ -167,6 +183,8 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
 
 pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
     //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "shutdown", containerid);
+    logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
     let _ = Command::new(JAILHOUSE_PATH)
         .arg("cell")
         .arg("shutdown")
@@ -204,6 +222,8 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     let _ = destroy_update_state(containerid);
 
     // Execute the command to destroy the jailhouse cell using the name of the cell containerid
+    let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "destroy", containerid);
+    logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
     let _ = Command::new(JAILHOUSE_PATH)
         .arg("cell")
         .arg("destroy")
@@ -291,25 +311,104 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         //TODO: absolute path NOPE
         logging::log_message(logging::Level::Debug, format!("Creating cell on cellfile {}", &cellfile).as_str());
         //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
-
+        let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "create", cellfile);
+        logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
         Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("create")
             .arg(cellfile)
             .output()?;
+        if ic.rpu_req { //use the .elf with the -r argument for RPU
+            //CREATION OF THE SYMLINK try to use ic.inmate magari con .trim()
+            let sym_source = format!("{}/boot/hello.elf", &fc.mountpoint);
+            let sym_destination = "/lib/firmware/hello.elf";
+            let output = Command::new("ln")
+                .arg("-sf") // -s for symbolic link, -f to force overwrite if exists
+                .arg(&sym_source)
+                .arg(sym_destination)
+                .output()?;
+            if output.status.success() {
+                logging::log_message(logging::Level::Debug, format!("Symlink created for cell with id {}", &fc.containerid).as_str());
+            } else { 
+                logging::log_message(logging::Level::Debug, format!("Symlink creation failed for cell with id {}", &fc.containerid).as_str());            
+            }
 
-        if !ic.starting_vaddress.is_empty() {
-            logging::log_message(logging::Level::Debug, format!("Starting cell with id {} Vaddress specified", &fc.containerid).as_str());
-            Command::new(JAILHOUSE_PATH)
+            let command_str = format!("{} {} {}", "ln -sf", &sym_source, &sym_destination);
+            logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
+            
+            // Get the dynamic rcpus value from the state file.
+            let rcpu = get_rcpu_for_container(&fc.containerid)?;
+                    
+            logging::log_message(logging::Level::Debug, format!("Creating cell with id {}", &fc.containerid).as_str());  
+            logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate is {}", &ic.inmate).as_str());
+            logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate.trim is {}", &ic.inmate.trim()).as_str());
+
+            let command_str = format!(
+                "{} {} {} {} {} {} {}",
+                JAILHOUSE_PATH,
+                "cell",
+                "load",
+                &fc.containerid,
+                "-r",
+                "hello.elf",
+                &rcpu
+            );
+
+            // Log which command you're about to run.
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("Running command: {}", command_str),
+            );
+
+            // Actually run the command and capture its output.
+            let output = Command::new(JAILHOUSE_PATH)
                 .arg("cell")
                 .arg("load")
                 .arg(&fc.containerid)
-                .arg(ic.inmate.trim())
-                .arg("-a")
-                .arg(&ic.starting_vaddress)
-                .output()?;
-        } else {
-            logging::log_message(logging::Level::Debug, format!("Starting cell with id {} Defaulting vaddress", &fc.containerid).as_str());
+                .arg("-r")
+                .arg("hello.elf")
+                .arg(&rcpu)
+                .output() // This returns a std::io::Result<Output>
+                .map_err(|e| {
+                    // If spawning the process fails altogether (e.g. not found),
+                    // log an error and propagate the error upward.
+                    logging::log_message(
+                        logging::Level::Error,
+                        &format!("Failed to spawn jailhouse command: {}", e),
+                    );
+                    e
+                })?;
+
+            // Log the command’s exit status, stdout, and stderr.
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("STATUS: {:?}", output.status)
+            );
+
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("STDOUT: {}", String::from_utf8_lossy(&output.stdout))
+            );
+
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("STDERR: {}", String::from_utf8_lossy(&output.stderr))
+            );
+
+            // Check if the jailhouse command itself returned a non-zero exit code.
+            if !output.status.success() {
+                logging::log_message(
+                    logging::Level::Error,
+                    &format!("jailhouse cell load failed (status code: {:?})", output.status),
+                );
+                // You can decide to return an error here if you want to abort on failure.
+            }
+
+
+        } else { //use simply the .bin with classic cell load for APU
+            logging::log_message(logging::Level::Debug, format!("Starting cell with id {}", &fc.containerid).as_str());
+            let command_str = format!("{} {} {} {} {}", JAILHOUSE_PATH, "cell", "load", &fc.containerid, &ic.inmate.trim());
+            logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
             Command::new(JAILHOUSE_PATH)
                 .arg("cell")
                 .arg("load")
@@ -317,10 +416,11 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .arg(ic.inmate.trim())
                 .output()?;
         }
-        let command = format!("echo \"caronte is listening\"");
+
+        let caronte_command = format!("echo \"caronte is listening\"");
         logging::log_message(logging::Level::Debug, format!("Starting caronted with id {}", &fc.containerid).as_str());
         let start_output = Command::new("/usr/share/runPHI/caronte")
-            .arg(command)
+            .arg(caronte_command)
             .arg(&fc.containerid)
             .spawn()?;
         let pid = start_output.id();
