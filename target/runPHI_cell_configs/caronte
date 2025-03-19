@@ -3,7 +3,7 @@ running="true"
 # Function to gracefully handle the SIGTERM signal
 terminate() {
     echo "Received SIGTERM. Exiting gracefully."
-    jailhouse cell destroy "${2:0:10}"
+    #jailhouse cell destroy "${2:0:10}"
     running="false"
     exit 0
 }

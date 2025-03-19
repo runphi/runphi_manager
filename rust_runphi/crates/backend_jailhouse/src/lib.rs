@@ -318,27 +318,6 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             .arg("create")
             .arg(cellfile)
             .output()?;
-
-        // With the new omnivisor verison we do not need to specify the vaddress
-        /* if !ic.starting_vaddress.is_empty() {
-            logging::log_message(logging::Level::Debug, format!("Starting cell with id {} Vaddress specified", &fc.containerid).as_str());
-            Command::new(JAILHOUSE_PATH)
-                .arg("cell")
-                .arg("load")
-                .arg(&fc.containerid)
-                .arg(ic.inmate.trim())
-                .arg("-a")
-                .arg(&ic.starting_vaddress)
-                .output()?;
-        } else {
-            logging::log_message(logging::Level::Debug, format!("Starting cell with id {} Defaulting vaddress", &fc.containerid).as_str());
-            Command::new(JAILHOUSE_PATH)
-                .arg("cell")
-                .arg("load")
-                .arg(&fc.containerid)
-                .arg(ic.inmate.trim())
-                .output()?;
-        } */
         if ic.rpu_req { //use the .elf with the -r argument for RPU
             //CREATION OF THE SYMLINK try to use ic.inmate magari con .trim()
             let sym_source = format!("{}/boot/hello.elf", &fc.mountpoint);
@@ -353,28 +332,79 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             } else { 
                 logging::log_message(logging::Level::Debug, format!("Symlink creation failed for cell with id {}", &fc.containerid).as_str());            
             }
+
             let command_str = format!("{} {} {}", "ln -sf", &sym_source, &sym_destination);
             logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
             
             // Get the dynamic rcpus value from the state file.
             let rcpu = get_rcpu_for_container(&fc.containerid)?;
-        
-            // Build the load argument string with the dynamic rcpus value.
-            let load_arg = format!("hello.elf {}", rcpu);
-            
+                    
             logging::log_message(logging::Level::Debug, format!("Creating cell with id {}", &fc.containerid).as_str());  
-            //logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate is {}", &ic.inmate).as_str());
-            //logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate.trim is {}", &ic.inmate.trim()).as_str());
-            let command_str = format!("{} {} {} {} {} {}", JAILHOUSE_PATH, "cell", "load", &fc.containerid, "-r", &load_arg);
-            logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());    
-                Command::new(JAILHOUSE_PATH)
-                    .arg("cell")
-                    .arg("load")
-                    .arg(&fc.containerid)
-                    //.arg(ic.inmate.trim())
-                    .arg("-r")
-                    .arg(&load_arg) 
-                    .output()?;
+            logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate is {}", &ic.inmate).as_str());
+            logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate.trim is {}", &ic.inmate.trim()).as_str());
+
+            let command_str = format!(
+                "{} {} {} {} {} {} {}",
+                JAILHOUSE_PATH,
+                "cell",
+                "load",
+                &fc.containerid,
+                "-r",
+                "hello.elf",
+                &rcpu
+            );
+
+            // Log which command you're about to run.
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("Running command: {}", command_str),
+            );
+
+            // Actually run the command and capture its output.
+            let output = Command::new(JAILHOUSE_PATH)
+                .arg("cell")
+                .arg("load")
+                .arg(&fc.containerid)
+                .arg("-r")
+                .arg("hello.elf")
+                .arg(&rcpu)
+                .output() // This returns a std::io::Result<Output>
+                .map_err(|e| {
+                    // If spawning the process fails altogether (e.g. not found),
+                    // log an error and propagate the error upward.
+                    logging::log_message(
+                        logging::Level::Error,
+                        &format!("Failed to spawn jailhouse command: {}", e),
+                    );
+                    e
+                })?;
+
+            // Log the command’s exit status, stdout, and stderr.
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("STATUS: {:?}", output.status)
+            );
+
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("STDOUT: {}", String::from_utf8_lossy(&output.stdout))
+            );
+
+            logging::log_message(
+                logging::Level::Debug,
+                &format!("STDERR: {}", String::from_utf8_lossy(&output.stderr))
+            );
+
+            // Check if the jailhouse command itself returned a non-zero exit code.
+            if !output.status.success() {
+                logging::log_message(
+                    logging::Level::Error,
+                    &format!("jailhouse cell load failed (status code: {:?})", output.status),
+                );
+                // You can decide to return an error here if you want to abort on failure.
+            }
+
+
         } else { //use simply the .bin with classic cell load for APU
             logging::log_message(logging::Level::Debug, format!("Starting cell with id {}", &fc.containerid).as_str());
             let command_str = format!("{} {} {} {} {}", JAILHOUSE_PATH, "cell", "load", &fc.containerid, &ic.inmate.trim());
@@ -386,12 +416,11 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .arg(ic.inmate.trim())
                 .output()?;
         }
-        
 
-        let command = format!("echo \"caronte is listening\"");
+        let caronte_command = format!("echo \"caronte is listening\"");
         logging::log_message(logging::Level::Debug, format!("Starting caronted with id {}", &fc.containerid).as_str());
         let start_output = Command::new("/usr/share/runPHI/caronte")
-            .arg(command)
+            .arg(caronte_command)
             .arg(&fc.containerid)
             .spawn()?;
         let pid = start_output.id();
