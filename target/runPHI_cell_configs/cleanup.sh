@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # List of files and directories to keep
-KEEP=("Makefile" "state.toml" "platform_info.toml" "cleanup.sh" "caronte" "include" "configuration")
+KEEP=("Makefile" "state.toml" "initial_state.toml" "platform_info.toml" "cleanup.sh" "caronte" "include" "configuration")
 
 # Working directory
 TARGET_DIR="/usr/share/runPHI"
 STATE_FILE="$TARGET_DIR/state.toml"
+INITIAL_STATE_FILE="$TARGET_DIR/initial_state.toml"
 
 # Default options
 CLEAN_CONTAINERS=false
@@ -18,7 +19,7 @@ show_help() {
   echo "Usage: $0 [OPTIONS]"
   echo "Options:"
   echo "  -c, --clean         Remove all containers in /run/runPHI/"
-  echo "  -r, --restore-state Restore state.toml to its original contents"
+  echo "  -r, --restore-state Restore state.toml from initial_state.toml"
   echo "  -p, --prune-containers Remove all Docker containers in /var/lib/docker/containers/"
   echo "  -a, --all           Perform all cleanup operations"
   echo "  -h, --help          Display this help message"
@@ -90,25 +91,14 @@ if $PRUNE_CONTAINERS; then
   echo "Removed all Docker containers in /var/lib/docker/containers/"
 fi
 
-# Restore state.toml if the option is set
+# Restore state.toml from initial_state.toml if the option is set
 if $RESTORE_STATE; then
-  cat > "$STATE_FILE" << EOF
-[containerid]
-ids = []
-
-[available_memory]
-memory = "0x3ed00000, 0x46d00000"
-
-[free_segments]
-segments= ["0x3ed00000, 0x46d00000"]
-
-[free_pci_devices_bdf]
-bdf = [1,2]
-
-[free_rcpus]
-ids = [0]
-EOF
-  echo "Restored state.toml to original contents."
+  if [[ -f "$INITIAL_STATE_FILE" ]]; then
+    mv "$INITIAL_STATE_FILE" "$STATE_FILE"
+    echo "Restored state.toml from initial_state.toml."
+  else
+    echo "Error: initial_state.toml not found. Cannot restore state."
+  fi
 fi
 
 echo "Cleanup complete."

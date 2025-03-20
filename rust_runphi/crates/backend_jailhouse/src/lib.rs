@@ -417,7 +417,8 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 .output()?;
         }
 
-        let caronte_command = format!("echo \"caronte is listening\"");
+        //let caronte_command = format!("echo \"caronte is listening\"");
+        let caronte_command = format!("");
         logging::log_message(logging::Level::Debug, format!("Starting caronted with id {}", &fc.containerid).as_str());
         let start_output = Command::new("/usr/share/runPHI/caronte")
             .arg(caronte_command)

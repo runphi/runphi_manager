@@ -2,7 +2,7 @@
 running="true"
 # Function to gracefully handle the SIGTERM signal
 terminate() {
-    echo "Received SIGTERM. Exiting gracefully."
+    #echo "Received SIGTERM. Exiting gracefully."
     #jailhouse cell destroy "${2:0:10}"
     running="false"
     exit 0
@@ -12,7 +12,7 @@ terminate() {
 trap 'terminate' SIGTERM
 trap 'terminate' SIGKILL
 
-echo "Script is running. Press Ctrl+C to send a SIGTERM signal."
+#echo "Script is running. Press Ctrl+C to send a SIGTERM signal."
 bash -c "$1"
 # Keep the script running (replace this with your actual work)
 while [ "$running" = "true" ]; do
