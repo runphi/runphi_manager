@@ -210,7 +210,8 @@ pub const PCI_DEVICE_EMPTY_TEMPLATE: &'static str = r#"
 "#;
 
 pub const QEMU_PREAMBLE_TEMPLATE: &'static str = r#"
-#include "cell.h"
+#include "types.h"
+#include "cell-config.h"
 
 struct {
 	struct jailhouse_cell_desc cell;

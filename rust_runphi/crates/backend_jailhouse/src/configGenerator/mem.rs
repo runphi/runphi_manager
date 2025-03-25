@@ -151,26 +151,59 @@ pub fn memconfig(
 ) -> Result<(), Box<dyn Error>> {
     let file_path = Path::new(WORKPATH).join(format!("platform_info.toml"));
 
-    // Insert line into the config file
-    let pattern = r"__u64 rcpus\[\d*\];";
+    // // Insert line into the config file
+    // let pattern = r"__u64 rcpus\[\d*\];";
+    // let num_regions = match count_mem_regions(&file_path) {
+    // Ok(count) => count,
+    // Err(e) => {
+    //     eprintln!("Error counting memory regions: {}", e);
+    //     return Err(e.into()); // Propagate the error
+    //     }
+    // };
+    // // Use format! to include the variable
+    // let linetoinsert = format!("\tstruct jailhouse_memory mem_regions[{}];", num_regions); 
+
+    // // Compile a regular expression to match the pattern and insert the mem_regions
+    // let re = Regex::new(&pattern)?;
+    // if let Some(pos) = re.find(&c.conf) {
+    //     c.conf
+    //         .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
+    // } else {
+    //     return Err("\"pattern __u64 rcpus\" not found".into());
+    // }
+
+    // Define both patterns
+    let pattern1 = r"__u64 rcpus\[\d*\];";
+    let pattern2 = r"__u64 cpus\[\d*\];";
+
+    // Compile both regexes
+    let re1 = Regex::new(pattern1)?;
+    let re2 = Regex::new(pattern2)?;
+
+    // Count memory regions (as in your original snippet)
     let num_regions = match count_mem_regions(&file_path) {
-    Ok(count) => count,
-    Err(e) => {
-        eprintln!("Error counting memory regions: {}", e);
-        return Err(e.into()); // Propagate the error
+        Ok(count) => count,
+        Err(e) => {
+            eprintln!("Error counting memory regions: {}", e);
+            return Err(e.into());
         }
     };
-    // Use format! to include the variable
-    let linetoinsert = format!("\tstruct jailhouse_memory mem_regions[{}];", num_regions); 
 
-    // Compile a regular expression to match the pattern and insert the mem_regions
-    let re = Regex::new(&pattern)?;
-    if let Some(pos) = re.find(&c.conf) {
-        c.conf
-            .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
+    // Create the line to insert using the count
+    let linetoinsert = format!("\tstruct jailhouse_memory mem_regions[{}];", num_regions);
+
+    // Try to find the first pattern; if not found, try the second
+    let pos = if let Some(m) = re1.find(&c.conf) {
+        m
+    } else if let Some(m) = re2.find(&c.conf) {
+        m
     } else {
-        return Err("\"pattern __u64 rcpus\" not found".into());
-    }
+        return Err("Neither pattern __u64 rcpus nor __u64 cpus found".into());
+    };
+
+    // Insert the new line after the matched pattern
+    c.conf.insert_str(pos.end(), &format!("\n{}\n", linetoinsert));
+
 
     match load_config(&file_path) {
         Ok(config) => {
