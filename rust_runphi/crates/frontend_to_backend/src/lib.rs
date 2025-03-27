@@ -52,24 +52,30 @@ pub struct ImageConfig {
     #[serde(default)]
     // OSvar stores information in a file /OS to indentify the OS to load
     // if OSvar is "linux", the OS file contains the image of the linux kernel
-    // if the OSvar contains "zephyr", zephyr is loaded
-    // NOTE: ----------------------------------------
-    // TODO: The OS var for zephyr is not actually needed, since zephyr is a de-facto
-    // bare metal inmate. At the moment, however, is needed to mockup the .cell file loaded
-    // In any case it is good to keep the OS information somewhere for future stuff.
+    // if the OSvar contains anything else, like "zephyr", then a file integrating the runtime is loaded
+    // When avialable, this variable could identify also a bare metal runtime like a WASM OS
     pub os_var: String,
     #[serde(default)]
+    // When available, a custom kernel and ramkdisk shipped in the container can be specified. In this case the
+    // application decides to bring its own kernel (platformm/board-dependent)
     pub kernel: String,
     #[serde(default)]
     pub ramdisk: String,
+    // The inmate variable represents the file to be loaded containing the bare metal code or the
+    // app with the libOS
     #[serde(default)]
     pub inmate: String,
+    // The dtb is only for linux arm64, borderline case
     #[serde(default)]
     pub dtb: String,
+    // Same here, the initrd is an alternative to ramdisk, depending on the arch
     #[serde(default)]
     pub initrd: String,
     #[serde(default)]
     pub netconf: String,
+    // The starting_vaddress variable specifies the virtual address that the binary in inmate is
+    // expecting to start. This determines how to remap the memory in the MMU when available, or
+    // decides the placement when MMU not avaialble
     #[serde(default)]
     pub starting_vaddress: String,
     // This lines are needed to include the "net" and "rpu_req" field
@@ -90,7 +96,7 @@ impl ImageConfig {
         };
         let mut config: ImageConfig = serde_json::from_str(&json_str).unwrap();
         if !config.inmate.is_empty() {
-            config.inmate = format!("{}{}", mountpoint, config.inmate);
+            config.inmate = format!("{}{}", mountpoint, config.inmate).trim().to_string();
         } else {
             config.inmate = format!("{}/boot/boot.bin", mountpoint);
         }

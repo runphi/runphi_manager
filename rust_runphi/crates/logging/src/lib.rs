@@ -4,59 +4,6 @@
 // Francesco Tafuri (fran.tafuri@studenti.unina.it)
 //*********************************************
 
-// use serde::Deserialize;
-// use serde_json;
-// use std::fs;
-
-// use std::path::PathBuf;
-// use std::path::Path;
-
-//This method is used to write log messages on the json file 
-// pub fn write_to_json(msg: &String, log_path: &Path)->Result<(),Box<dyn Error>>{
-//     let mut file = OpenOptions::new()
-//     .create(true)
-//     .read(true)
-//     .write(true)
-//     .append(true)
-//     .open(log_path)?;
-
-//     let mut f_content = String::new();
-//     //Read the content of the given file 
-//     file.read_to_string(&mut f_content)?; 
-//     //if the file is empty 
-//     let mut json_array:Vec<Value>=if f_content.is_empty(){
-//         Vec::new() //create a new array
-//     }else{
-//         serde_json::from_str(&f_content)? //deserialize the content read from the file 
-//     };
-//     //Create a new message with the content of the given msg
-//     let message = Message {content:msg.clone(),};
-//     //Serialize the message in a JSON Value and puth it into the array 
-//     let message_json = serde_json::to_value(&message)?;
-//     json_array.push(message_json);
-//     //Serialize the array with the updated content 
-//     let updated_content = serde_json::to_string_pretty(&json_array)?;
-//     file.seek(SeekFrom::Start(0))?;
-//     //Clear the file 
-//     let _ = file.set_len(0);
-//     //Write on the file
-//     let _ = file.write_all(updated_content.as_bytes());
-//     Ok(())
-// }
-
-// pub fn get_logfile(log: Option<PathBuf>)->String {
-//     //OBTAIN LOG FILE PATH
-//     let logfile = match &log{
-//         Some(log_path)=> log_path.as_path(),
-//         None => {
-//             return "/dev/err"
-//         },
-//     };
-//     return logfile;
-// }
-    
-
-
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
@@ -99,7 +46,7 @@ impl Logger {
             }
 
             // Optionally, print to the console (for demo purposes)
-            println!("{}", log_entry);
+            // print!("{}", log_entry);
         }
     }
 

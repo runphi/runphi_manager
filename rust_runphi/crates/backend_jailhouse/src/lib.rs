@@ -7,6 +7,7 @@ use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use std::error::Error;
 use std::fs::{self};
+use std::os::unix::fs::symlink;
 //use std::io::Read;
 use std::path::Path;
 use std::process::Command;
@@ -169,7 +170,7 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
     } else {
         let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "start", containerid);
         logging::log_message(logging::Level::Debug, format!("Starting cell with id {}", containerid).as_str());
-        logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
+        logging::log_message(logging::Level::Trace, format!("Starting cell by calling: {}", &command_str).as_str());
         let _ = Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("start")
@@ -184,7 +185,7 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
 pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
     //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "shutdown", containerid);
-    logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
+    logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
     let _ = Command::new(JAILHOUSE_PATH)
         .arg("cell")
         .arg("shutdown")
@@ -202,28 +203,16 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
     return Ok(());
 }
 
-//We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
+//TODO: We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
 
-/*  //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
-    let configuration_path = format!("/run/runPHI/{}/config{}.conf", containerid, containerid);
-
-    // Convert the file path to a PathBuf
-    let path = PathBuf::from(configuration_path);
-
-    // Open the file
-    let mut file = File::open(&path)?;
-
-    // Read the file contents into a string
-    let mut configuration = String::new();
-    file.read_to_string(&mut configuration)?;
- */
+    //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
     let _ = destroy_update_state(containerid);
 
     // Execute the command to destroy the jailhouse cell using the name of the cell containerid
     let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "destroy", containerid);
-    logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
+    logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
     let _ = Command::new(JAILHOUSE_PATH)
         .arg("cell")
         .arg("destroy")
@@ -256,54 +245,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
 
     // We have to differentiate among OSes, because linux has a different jh command
     // while other OSes may have special params, e.g. loading address for zephyr
-    if ic.os_var == "linux" {
-        // Determine the architecture
-        // TODO: replace with smt better than lscpu
-        let arch_output = std::process::Command::new("lscpu").output()?;
-        let arch_lines = String::from_utf8_lossy(&arch_output.stdout);
-        let arch: &str = arch_lines
-            .lines()
-            .nth(0)
-            .unwrap()
-            .split_whitespace()
-            .nth(1)
-            .unwrap();
-
-        // Execute command based on architecture
-        // We need an init process that starts monitoring and handles signals directed to partitioned container, move into shim??
-        //TODO: not tested under x86. A patched kernel is needed
-        match arch {
-            "x86_64" => {
-                let command = format!(
-                    "jailhouse cell linux {} {} -i {} -c \"console=ttyS0,115200\"",
-                    fc.containerid, ic.kernel, ic.initrd
-                );
-                let start_output = Command::new("/usr/share/runPHI/caronte")
-                    .arg(command)
-                    .arg(&fc.containerid)
-                    .spawn()?;
-                let pid = start_output.id();
-                std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
-            }
-            "aarch32" | "aarch64" => {
-                let command = format!(
-                    "jailhouse cell linux {} {} -d {} -i {} -c \"console ttyAMA0,115200\"",
-                    fc.containerid, ic.kernel, ic.dtb, ic.cpio
-                );
-                let start_output = Command::new("/usr/share/runPHI/caronte")
-                    .arg(command)
-                    .arg(&fc.containerid)
-                    .spawn()?;
-                let pid = start_output.id();
-                std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
-            }
-            _ => {
-                eprintln!("Arch not recognized");
-                return Err("Arch not recognized".into());
-            }
-        }
-    } else {
-
+    if ic.os_var != "linux" {
         // Handle baremetal or libOS built with application
         // Here we have to wait both commands to return to guarantee ordering, and then we start caronte
         // caronte is needed to keep a pid alive expected by containerd before giving the start
@@ -312,63 +254,56 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         logging::log_message(logging::Level::Debug, format!("Creating cell on cellfile {}", &cellfile).as_str());
         //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
         let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "create", cellfile);
-        logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
+        logging::log_message(logging::Level::Trace, format!("Creating cell by calling: {}", &command_str).as_str());
         Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("create")
             .arg(cellfile)
-            .output()?;
-        if ic.rpu_req { //use the .elf with the -r argument for RPU
-            //CREATION OF THE SYMLINK try to use ic.inmate magari con .trim()
-            let sym_source = format!("{}/boot/hello.elf", &fc.mountpoint);
-            let sym_destination = "/lib/firmware/hello.elf";
-            let output = Command::new("ln")
-                .arg("-sf") // -s for symbolic link, -f to force overwrite if exists
-                .arg(&sym_source)
-                .arg(sym_destination)
-                .output()?;
-            if output.status.success() {
-                logging::log_message(logging::Level::Debug, format!("Symlink created for cell with id {}", &fc.containerid).as_str());
-            } else { 
-                logging::log_message(logging::Level::Debug, format!("Symlink creation failed for cell with id {}", &fc.containerid).as_str());            
-            }
-
-            let command_str = format!("{} {} {}", "ln -sf", &sym_source, &sym_destination);
-            logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
-            
+            .output()?; 
+        
+        logging::log_message(logging::Level::Debug, format!("Creating cell with id {}", &fc.containerid).as_str());  
+        logging::log_message(logging::Level::Trace, format!("The parameter ic.inmate is {}", &ic.inmate).as_str());
+        
+        //If an RPU is requested, use the .elf with the -r argument for RPU
+        // Omnivisor requires a the elf to be in /lib/firmware as per current version. 
+        // We create a symlink (overwriting if already exisitng) to avoid file copy
+        // Then the rcpu allotted to the container is retrieved and passed 
+        // to omnivisor during the cell load. Notice that here onivisor takes care 
+        // of placing the binary in the appropriate memory area.
+        if ic.rpu_req {
+            let inmate_name = ic.inmate.rsplitn(2, '/').next().unwrap_or("");
+            let sym_destination = format!("/lib/firmware/{}", &inmate_name) ;
+            logging::log_message(logging::Level::Trace, format!("The symdest is {}", &sym_destination).as_str());
+           
             // Get the dynamic rcpus value from the state file.
             let rcpu = get_rcpu_for_container(&fc.containerid)?;
+            
+            if fs::symlink_metadata(&sym_destination).is_ok() {
+                if let Err(e) = fs::remove_file(&sym_destination) {
+                    logging::log_message(logging::Level::Error, format!("Removing existing symlink failed for cell with id {}, error {}", &fc.containerid, e).as_str());            
+                    return Err(Box::new(e))
+                }
+            }
+
+            match symlink(&ic.inmate, &sym_destination){
+                Ok(_) => logging::log_message(logging::Level::Debug, format!("Symlink created for cell with id {}", &fc.containerid).as_str()),
+                Err(e) => {logging::log_message(logging::Level::Error, format!("Symlink creation failed for cell with id {}, erorr {}", &fc.containerid, e).as_str()); 
+                return Err(Box::new(e))},            
+            }
                     
-            logging::log_message(logging::Level::Debug, format!("Creating cell with id {}", &fc.containerid).as_str());  
-            logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate is {}", &ic.inmate).as_str());
-            logging::log_message(logging::Level::Debug, format!("The parameter ic.inmate.trim is {}", &ic.inmate.trim()).as_str());
-
-            let command_str = format!(
-                "{} {} {} {} {} {} {}",
-                JAILHOUSE_PATH,
-                "cell",
-                "load",
-                &fc.containerid,
-                "-r",
-                "hello.elf",
-                &rcpu
-            );
-
-            // Log which command you're about to run.
-            logging::log_message(
-                logging::Level::Debug,
-                &format!("Running command: {}", command_str),
-            );
-
-            // Actually run the command and capture its output.
-            let output = Command::new(JAILHOUSE_PATH)
-                .arg("cell")
-                .arg("load")
+            // Create the command but not run it, first log it. Then run it and capture its output.
+            let mut cmd_load = Command::new(JAILHOUSE_PATH);
+            cmd_load.arg("cell").arg("load")
                 .arg(&fc.containerid)
-                .arg("-r")
-                .arg("hello.elf")
-                .arg(&rcpu)
-                .output() // This returns a std::io::Result<Output>
+                .arg("-r").arg(&inmate_name)   
+                .arg(&rcpu);
+                
+            let command_str: Vec<String> = std::iter::once(cmd_load.get_program().to_string_lossy().to_string())
+               .chain(cmd_load.get_args().map(|arg| arg.to_string_lossy().to_string())).collect();
+            
+            logging::log_message(logging::Level::Trace, format!("Loading cell by calling: {}", command_str.join(" ")).as_str());
+            
+            let output = cmd_load.output() // This returns a std::io::Result<Output>
                 .map_err(|e| {
                     // If spawning the process fails altogether (e.g. not found),
                     // log an error and propagate the error upward.
@@ -380,20 +315,9 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 })?;
 
             // Log the command’s exit status, stdout, and stderr.
-            logging::log_message(
-                logging::Level::Debug,
-                &format!("STATUS: {:?}", output.status)
-            );
-
-            logging::log_message(
-                logging::Level::Debug,
-                &format!("STDOUT: {}", String::from_utf8_lossy(&output.stdout))
-            );
-
-            logging::log_message(
-                logging::Level::Debug,
-                &format!("STDERR: {}", String::from_utf8_lossy(&output.stderr))
-            );
+            logging::log_message(logging::Level::Trace, &format!("STATUS: {:?}", output.status));
+            logging::log_message(logging::Level::Trace, &format!("STDOUT: {}", String::from_utf8_lossy(&output.stdout)));
+            logging::log_message(logging::Level::Trace, &format!("STDERR: {}", String::from_utf8_lossy(&output.stderr)));
 
             // Check if the jailhouse command itself returned a non-zero exit code.
             if !output.status.success() {
@@ -404,17 +328,28 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 // You can decide to return an error here if you want to abort on failure.
             }
 
+        //If an RPU is not required, we load the .bin onto an APU, remapping the first available address
+        //In this case we might want to specify the virtual load address to the hypervisor, so that
+        //the memory cna be properly set. We create the load command, log it, and finally run it
+        //retrieving the output.
+        } else {
+            logging::log_message(logging::Level::Debug, format!("Loading cell with id {}", &fc.containerid).as_str());
+            
+            let mut cmdLoad = Command::new(JAILHOUSE_PATH); 
+            cmdLoad.arg("cell").arg("load").arg(&fc.containerid).arg(&ic.inmate);
 
-        } else { //use simply the .bin with classic cell load for APU
-            logging::log_message(logging::Level::Debug, format!("Starting cell with id {}", &fc.containerid).as_str());
-            let command_str = format!("{} {} {} {} {}", JAILHOUSE_PATH, "cell", "load", &fc.containerid, &ic.inmate.trim());
-            logging::log_message(logging::Level::Debug, format!("The command is: {}", &command_str).as_str());
-            Command::new(JAILHOUSE_PATH)
-                .arg("cell")
-                .arg("load")
-                .arg(&fc.containerid)
-                .arg(ic.inmate.trim())
-                .output()?;
+            // Append the starting vaddress when present in the JSON
+            //TODO MANAGE OMNIVISOR CONTAINERS APU
+            if !ic.starting_vaddress.is_empty() {
+                cmdLoad.arg("-a").arg(&ic.starting_vaddress);
+            } 
+            
+            let command_str: Vec<String> = std::iter::once(cmdLoad.get_program().to_string_lossy().to_string())
+               .chain(cmdLoad.get_args().map(|arg| arg.to_string_lossy().to_string())).collect();
+            
+            logging::log_message(logging::Level::Trace, format!("Loading cell by calling: {}", command_str.join(" ")).as_str());
+
+            cmdLoad.output()?;
         }
 
         //let caronte_command = format!("echo \"caronte is listening\"");
@@ -427,6 +362,21 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         let pid = start_output.id();
         std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
         //log_elapsed_time(start,"Duration of create cell"); //TAKE THE END TIME OF THE PHASE
+    
+    } else if ic.os_var == "linux" {
+        // Here we manage separately the (unlikely) linux case due to a dedicated jh command
+        // Commands only for Linux aarch64
+        //TODO: create a gitlab branch for x86
+        let command = format!(
+                    "jailhouse cell linux {} {} -d {} -i {} -c \"console ttyAMA0,115200\"",
+                    fc.containerid, ic.kernel, ic.dtb, ic.cpio
+        );
+        let start_output = Command::new("/usr/share/runPHI/caronte")
+                    .arg(command)
+                    .arg(&fc.containerid)
+                    .spawn()?;
+        let pid = start_output.id();
+        std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
     }
     Ok(())
 }
