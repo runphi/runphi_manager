@@ -50,7 +50,6 @@ pub struct ImageConfig {
     // moreover, in case of Jailhouse, the user should provide the path, in the container fs, of the inmate to run
     pub cpio: String,
     #[serde(default)]
-    // OSvar stores information in a file /OS to indentify the OS to load
     // if OSvar is "linux", the OS file contains the image of the linux kernel
     // if the OSvar contains anything else, like "zephyr", then a file integrating the runtime is loaded
     // When avialable, this variable could identify also a bare metal runtime like a WASM OS
