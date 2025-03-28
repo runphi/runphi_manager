@@ -4,53 +4,74 @@
 
 ----
 
-LOREM IPSUM
-
-#### Authors: Marco Barletta & DESSERT
+#### Authors: Marco Barletta, Francesco Boccola, Daniele Ottaviano, Luigi De Simone & other members of DESSERT lab UniNa
 #### Università degli Studi di Napoli Federico II
-#### marco.barletta@unina.it, other emails
+#### marco.barletta@unina.it, francesco.boccola@unina.it
 ----
 
+runPHI is a container RUNtime for Partitioning Hypervisor Integration. 
+What that means? A container runtime is whatever seats below your containerd, docker, or kubelet, and is the tiny program in charge of setting up kernel stuff to start a container.
 
-## Structure
+runPHI does something similar, but with partitioning hypervisors, which are hypervisors designed for industrial scenarios with critical requirements in mind.
 
-- runphi:       main runhpi code, runtime independent
-- configure:    detect and install runPHI for the appropriate runtime available on board
-- frontend:
-    - commands:     OCI-runtime compliant commands called by runphi
-        - kill, pause, start, create, delete, resume, state
-    - intermediate:
-        - config_generator:             drives the generation of configuration files for the partitioned container, relying on runtime-dependent backend
-        - config_generator_resources:   called by the config_generator, managers of resources for creating the config file, runtime-independent half, call the backend correspondend
-            - MEM/NET/DEV/BOOT/CPU/COMM_config -- Mem manages memory, NET networkng, DEV acess to Devices, BOOT manages the startup configuraton for the guest, CPU manages CPU resources, COMM
-- backend:              containing a subfolder for each supported runtime
-    - <runtime x>:      runtime x
-        - create-guest      runtime-dependent code to start a partitioned container
-        - start-guest       runtime-dependent code to start a created partitioning container
-        - destroy-guest     runtime-dependent code to destroy a partinioned contaner
-        - stop-guest        runtime-dependent code to suspend a partinioned contaner
-        - mount             runtime-dependent code to mount part of the host filesystem n the guest
-        - config_generator: runtime-dependent stuff for managing the resources of partitioned container
-            - MEM/NET/DEV/BOOT/CPU/COMM_config -- Mem manages memory, NET networkng, DEV acess to Devices, BOOT manages the startup configuraton for the guest, CPU manages CPU resources, COMM manages communication channels between guests and hosts (shared memories, terminals, etc.)
-            - config_generator_helper_start helper to do some initial runtme-dependent configurations
-            - config_generator_helper_stop  helper to do some initial runtme-dependent configurations
-        - built-in: kernels and related stuff -- TEMPORARY, TO DELETE
+runPHI allows you to take your favourite Zephyr, FreeRTOS, or even bare metal code, running on industrial hardware platforms (INCLUDING RPUs!!!!!) and integrate it with your container orchestration system (e.g., Kubernetes).
+We call this isolated container ZICs (Zero-Interference Containers).
 
-    - <runtime y>:             runtime y
-        - ...
+Why that? We envision an industrial cloud in which critical applications are seamlessly managed along with normal Linux containers, with the same flexbility, allowing you to define the number of replicas, deploying them across a large cluster, while keeping a high standards of non-functional requirements. 
 
-Example with containerd:
-        - Contaner-related fles will be stored in: /run/runPHI/<ContainerName>/
-            Files:
-                - assignedCPUs                  contains the allocation vector of the CPUs
-                - config<ContainerName>.conf    output of config generator
-                - pidfile                       path of the file containing pid of init process
-                - <ContainerName>.c                      runtime-dependent conversion of output of conig_generator
-                - bundle                        path of the file containing OCI bundle
-                - inmate                        path of the inmate executable
-                - rootfs                        path of the rootfs on the host
-                - linux                         exists if the container to be started is a linux container
+runPHI is OCI compliant (at least, for basic calls like start, stop, kill, and delete). The runtime is still an academic research project, if you have any suggestion to improve it (or even better, you want to contribute!!!) please reach at the emails above.
 
+## Repo Structure
+
+- doc, with the current documentation
+- logo, well, the name is self explanatory
+- CNI, with a Container Network Interface to integrate the Kubernetes networking with the hypervisor one (it assumes having two VMs comunicating over network interfaces, still experimental)
+- docker, with the files required to containerize the building process
+- rust_runphi, with the actual source tree for the container runtime
+- target, with files that are necessary to integrate runPHI in the environment built with our environment builder
+
+## Build runPHI
+
+If you want to build runPHI for aarch64, try: 
+
+    cd rust_runphi
+    ./compile_rust.sh 
+    
+That requires a rust toolchain. If you do not want to install one, use the docker script to run those commands in a container.
+
+    docker/start_container.sh
+    
+
+## Debug runPHI
+
+export RUNPHI_DEBUG_LEVEL={level}
+
+where {level} can be "error", "warn", "info", "debug", "trace"
+
+Export the variable in an environment such that containerd (or any other program that calls runPHI) can inherit the variable.
+For example, export it and then from the shell restart containerd, or manually launch containerd.
+
+runPHI logs by default in /usr/share/runPHI/log.txt
+Note that that folder must be populated with other useful files. So you have to have it in your environment. The files are copied from the target directory in the root of this repo to the target environment by our environment builder. Look for more info there.
+
+## RunPHI Architecture
+
+RunPHI is written in rust, and divided in crates
+
+- runphi: containing the main function of the program. It is hypervisor-independent. In order to make the ZICs visible to common tools, the creation of the pause container is forwarded to runc_vanilla to actually create a pause container.
+- logging: a crate used by every other crate to handle logging in a systematic way.
+- liboci_cli: to parse OCI command line arguments into data structures.
+- frontend_to_backend: contains data structures that parse the config.json in /boot/ of the ZICs and other information from the frontend of runPHI into datastructures that work as APIs for the backend-part, which is hypervisor depedent. In other words, both the frontend and backend agree on the format of these data structures, and they both use them.
+- backend_{backend_name}: a folder for each backend supported. At the moment, Jailhouse is the only stable and tested backend.
+The backend usually contains:
+- a config_generator, which drives the generation of configuration files for the partitioned container, relying on hypervisor-dependent backend
+- resource files: called by the config_generator, managers of the available resources of the hardware platoform and called to create the config file
+For Jailhouse there is a file for each of the follwoing resources: CPU, memory, RPUs, devices, communication, network, and other boot parameters. 
+- template manager: the configuration is based on a template which is provided for the hardware platform. A file takes care of loading such templates.
+
+The backend calls the resource managers and some helper functions (config_generator_helper_start, //_end ), and implements the functions to start, stop, delete, kill the ZIC, with implementation that strongly depends on the hyprevisor.
+
+RunPHI generates some files for each ZIC to keep track of their information (like cell configuration file and compiled configuration). They can be found in /run/runPHI/<ContainerName>/
 
 
 ## Workflow
