@@ -56,7 +56,7 @@ Note that that folder must be populated with other useful files. So you have to 
 
 ## RunPHI Architecture
 
-RunPHI is written in rust, and divided in crates
+RunPHI is written in rust, and divided in the following crates crates:
 
 - runphi: containing the main function of the program. It is hypervisor-independent. In order to make the ZICs visible to common tools, the creation of the pause container is forwarded to runc_vanilla to actually create a pause container.
 - logging: a crate used by every other crate to handle logging in a systematic way.
@@ -72,6 +72,8 @@ For Jailhouse there is a file for each of the follwoing resources: CPU, memory, 
 The backend calls the resource managers and some helper functions (config_generator_helper_start, //_end ), and implements the functions to start, stop, delete, kill the ZIC, with implementation that strongly depends on the hyprevisor.
 
 RunPHI generates some files for each ZIC to keep track of their information (like cell configuration file and compiled configuration). They can be found in /run/runPHI/<ContainerName>/
+
+![RunPHI architecture](doc/runphi_architecture.png)
 
 
 ## Workflow
