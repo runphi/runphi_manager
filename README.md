@@ -1,6 +1,6 @@
 # runPHI
 
-<img src="https://dessert.unina.it:8088/runphi/runphi/-/raw/main/runPHI/logo/runphi_logo_lowres.jpg" width="100">
+<img src="https://github.com/runphi/runphi_manager/blob/main/logo/runphi_logo_lowres.jpg" width="100">
 
 ----
 
