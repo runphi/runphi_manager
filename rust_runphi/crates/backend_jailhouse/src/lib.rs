@@ -335,21 +335,21 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         } else {
             logging::log_message(logging::Level::Debug, format!("Loading cell with id {}", &fc.containerid).as_str());
             
-            let mut cmdLoad = Command::new(JAILHOUSE_PATH); 
-            cmdLoad.arg("cell").arg("load").arg(&fc.containerid).arg(&ic.inmate);
+            let mut cmd_load = Command::new(JAILHOUSE_PATH); 
+            cmd_load.arg("cell").arg("load").arg(&fc.containerid).arg(&ic.inmate);
 
             // Append the starting vaddress when present in the JSON
             //TODO MANAGE OMNIVISOR CONTAINERS APU
             if !ic.starting_vaddress.is_empty() {
-                cmdLoad.arg("-a").arg(&ic.starting_vaddress);
+                cmd_load.arg("-a").arg(&ic.starting_vaddress);
             } 
             
-            let command_str: Vec<String> = std::iter::once(cmdLoad.get_program().to_string_lossy().to_string())
-               .chain(cmdLoad.get_args().map(|arg| arg.to_string_lossy().to_string())).collect();
+            let command_str: Vec<String> = std::iter::once(cmd_load.get_program().to_string_lossy().to_string())
+               .chain(cmd_load.get_args().map(|arg| arg.to_string_lossy().to_string())).collect();
             
             logging::log_message(logging::Level::Trace, format!("Loading cell by calling: {}", command_str.join(" ")).as_str());
 
-            cmdLoad.output()?;
+            cmd_load.output()?;
         }
 
         //let caronte_command = format!("echo \"caronte is listening\"");
