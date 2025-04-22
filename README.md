@@ -73,13 +73,5 @@ Flow:
 
 **qemu-jailhouse** environment: refer to this [README](https://dessert.unina.it:8088/runphi/partitioned_container_demos/-/tree/main/demos).
 
-## Issues and TODO
-- the shim must be modified to incorporate caronte, and the management of the shim must be integrated (atm kill kills the shim)
-- Moving distinguishing layer into shim?
-- Implement real resource allocators to create and compile .c to .cell file on the fly. At the moment pre-made .cell files are used.
-In several part of the code there are conditions to control whether OS is zephyr. Is not really useful, right now it is needed to set loading address. It should not be useful once you can create the .c file with custom memory addresses.
-- When allotting a cpu, the inmate example may fail ... irq not corresponding to cpu????
-- Rustify caronte
-
 
 
