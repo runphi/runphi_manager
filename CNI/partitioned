@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# Log file
+LOG_FILE="/tmp/cni-test-plugin.log"
+
+# Log environment variables
+#echo "$(date): Environment variables:" >> "$LOG_FILE"
+#env >> "$LOG_FILE"
+
+# Read stdin
+INPUT=$(cat)
+
+# Log stdin input
+echo "$(date): Stdin input:" >>"$LOG_FILE"
+echo "$INPUT" >>"$LOG_FILE"
+
+# Function to extract JSON values
+#json_value() {
+#    echo "$1" | sed -e 's/[{}]/''/g' | awk -v k="$2" '{n=split($0,a,","); for (i=1; i<=n; i++) print a[i]}' | sed -n "s/\"$k\":\([^\"]*\)/\1/p" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//'
+#}
+
+# Parse the input JSON
+#CNI_COMMAND=$(echo "$INPUT" | json_value "$INPUT" "CNI_COMMAND")
+PREV_RESULT=$(echo "$INPUT" | jq -r '.prevResult // empty')
+ADDRESS_SUBNET=$(echo $PREV_RESULT | jq '.ips[0].address')
+ADDRESS=${ADDRESS_SUBNET:0:-3}
+#DEST_IP="192.0.2.12"
+DST=$(cat /var/lib/dhcp/dhcpd.leases | grep lease | tail -n1 | awk '{print $2}')
+# Convert the IP into an array by separating by '.'
+IFS='.' read -r a b c d <<<"$dst"
+
+# Increment the last octet
+((d = d + 1))
+
+# Handle overflow when the last octet reaches 256
+#if [ "$d" -eq 256 ]; then
+#    d=0
+#    ((c=c+1))  # Increment the third octet
+#fi
+
+# Handle overflow for the third octet
+#if [ "$c" -eq 256 ]; then
+#    c=0
+#    ((b=b+1))  # Increment the second octet
+#fi
+
+# Handle overflow for the second octet
+#if [ "$b" -eq 256 ]; then
+#    b=0
+#    ((a=a+1))  # Increment the first octet
+#fi
+
+# Print the next IP
+DEST_IP="$a.$b.$c.$d"
+
+echo $DEST_IP >>$LOG_FILE
+
+iptables -t nat -I INPUT 1 -d ${ADDRESS} -j DNAT --to-destination ${DEST_IP}
+iptables -t nat -I PREROUTING 1 -d ${ADDRESS} -j DNAT --to-destination ${DEST_IP}
+iptables -t nat -A POSTROUTING -d ${DEST_IP} -j MASQUERADE
+
+echo "Address:" >>$LOG_FILE
+echo "$ADDRESS" >>$LOG_FILE
+echo "$PREV_RESULT"
+echo "Response:" >>$LOG_FILE
+echo $PREV_RESULT >>$LOG_FILE
+
+# Exit with success
+exit 0
