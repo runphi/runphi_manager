@@ -1,6 +1,6 @@
 
 use std::error::Error;
-use std::fs::{self, OpenOptions};
+use std::fs::{self};
 use std::io::Write;
 
 use f2b;
@@ -43,10 +43,10 @@ impl Backendconfig {
 //TODO: error handling across this function is a box of shit, handle it
 pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>, Box<dyn Error>> {
 
-    let _ = append_message_with_time(&format!("starting config generator")); //TIME
+    logging::log_message(logging::Level::Info,  format!("starting config generator").as_str());
     let mut c = Backendconfig::new();
     c.conffile = format!("{}/config.cfg", fc.crundir);
-    let _ = append_message_with_time(&format!("Target file path : {}",c.conffile)); //TIME
+    logging::log_message(logging::Level::Info,  format!("Target file path : {}", c.conffile).as_str());
 
     // parsing configuration variables from the file
     //THIS IS THE ACCESS TO JSON.CONFIG FROM DOCKER
@@ -56,7 +56,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     
 
     let _ = confighelperstart(fc, &mut c, &config);
-
+    logging::log_message(logging::Level::Info, format!("Finished helper start").as_str());
     let _ = boot::bootconf(fc, &mut c, &mut config);
 
 
@@ -94,25 +94,23 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     */
 
     let _ = cpu::cpuconf(fc, &mut c, &quota, &period, &cpus);
-    let _ = append_message_with_time(&format!("Finished cpu config")); //TIME
-
+    logging::log_message(logging::Level::Info,  format!("Finished cpu config").as_str());
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
 
     // Extract values from the JSON structure
     //In the json structure only limit is created by kubernetes memory reservation doesn't exist, (but it cluod be specified in other way??), anyway we need to cuild the lv for the vm
     let st_req = fc.jsonconfig["linux"]["resources"]["memory"]["reservation"] //Domain memory in MB, (--memory-reservation="")
     .as_u64() // Assuming memory values are in unsigned integers
-    .unwrap_or(512); // Set default value to 512 MB if the value is missing
+    .unwrap_or(32); // Set default value to 512 MB if the value is missing
 
     let mem_request = fc.jsonconfig["linux"]["resources"]["memory"]["limit"] //Maximum domain memory in MB, (-m, --memory="")
         .as_u64() // Assuming memory values are in unsigned integers
-        .unwrap_or(512); // Set default value to 512M if the value is missing
+        .unwrap_or(32); // Set default value to 512M if the value is missing
     
-    //Pass everything to memconfig
-    let _ = append_message_with_time(&format!("starting mem config")); //TIME
-    let _ = append_message_with_time(&mem_request.to_string()); //TIME
+    //Pass everything to memconfig    
+    logging::log_message(logging::Level::Info,  format!("Memory request: {} MB, Memory reservation: {} MB", mem_request, st_req).as_str());
     let _ = mem::memconf(&mut c,&st_req, &mem_request,LVM_GROUP_NAME);
-    let _ = append_message_with_time(&format!("finished mem config")); //TIME
+    logging::log_message(logging::Level::Info,  format!("Finished mem config").as_str());
 
     //-------------------------------------------------------------------------------------
     //In xen physical device are managed by dom0 - unless u wanto to set PCI passthroug
@@ -120,9 +118,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _ = device::devconfig(&mut c);
 
     let _ = network::netconfig(&mut c);
-
-
-
+    logging::log_message(logging::Level::Info,  format!("Finished network config").as_str());
     //------------------------------------------------------------------------------------
     //If u want to write the console u have to specify this file in the create command in lib 
     //by sending this command "xl console container_id >> "$output_file" 2>&1 &"
@@ -137,12 +133,14 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
 
     //------------------------------------------------------------------------------------
-    //The comuniccation between the dooms, it should be possible simply by the virtaual networw interface
+    //The comuniccation between the doms, it should be possible simply by the virtaual network interface
     //------------------------------------------------------------------------------------
     //let _ = communication::communicationconfig(&mut c);
-    
+    c.conf.push_str(&format!("gic_version=\"v2\"\non_crash=\"preserve\"\n"));
     let _ = confighelperend(fc, &mut c, &config);
-    
+    logging::log_message(logging::Level::Info,  format!("Finished config generation").as_str());
+    logging::log_message(logging::Level::Info,  format!("Config file generated at: {}", c.conffile).as_str());
+    logging::log_message(logging::Level::Info,  format!("Config generation is:\n{}", c.conf).as_str());
     return Ok(config);
 }
 
@@ -158,10 +156,8 @@ fn confighelperstart(
 #---------------------------------------------------------------
 #Configuration file for container with id : {} 
 #---------------------------------------------------------------
-
-name = \"{}\" \n\n"
-
-    ,fc.containerid,fc.containerid);
+name = \"{}\" \n"
+,fc.containerid,fc.containerid);
 
     return Ok(());
 }
@@ -180,15 +176,8 @@ fn confighelperend(
 
 #[allow(dead_code)]
 fn append_message_with_time(message: &str) -> Result<(), Box<dyn Error>> {  //TIME
+    //TODO: put time stuff here
+    logging::log_message(logging::Level::Info,  format!("{}", message).as_str());
 
-    // Open the file in append mode, create it if it doesn't exist
-    let mut timefile = OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open("/usr/share/runPHI/times_file.txt")?;
-    
-    // Write the message and current time to the file, separated by an equal sign
-    writeln!(timefile, "{}", message)?;
-    
     Ok(())
 }

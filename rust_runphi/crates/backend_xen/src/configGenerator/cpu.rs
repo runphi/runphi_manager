@@ -93,7 +93,7 @@ pub fn cpuconf(
         let cpus2assign: Vec<i64> = free_cpus[free_cpus.len() - cpus as usize ..].to_vec();
 
         c.conf
-            .push_str(&format!("\nvcpus = {}\n\ncpus = {:?} \n\ncpu_affinity = {:?}\n\n",
+            .push_str(&format!("vcpus = {}\ncpus = {:?} \ncpu_affinity = {:?}\n",
                       cpus, cpus2assign, cpus2assign.iter().map(|x| x.to_string()).collect::<Vec<String>>()));
 
     } else {

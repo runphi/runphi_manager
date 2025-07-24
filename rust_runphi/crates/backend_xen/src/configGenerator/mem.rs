@@ -4,6 +4,7 @@ use regex::Regex;
 use std::error::Error;
 use std::io::{self, BufRead};
 use std::process::Command;
+use std::str;
 
 use crate::configGenerator;
 
@@ -14,41 +15,42 @@ pub fn memconf(
     group_name : &str
 ) -> Result<(), Box<dyn Error>> {
 
-    let mut vfree_mb: u64 = 0;
+    let output = Command::new("xl")
+    .arg("info")
+    .output()
+    .expect("Failed to execute xl info");
 
-    //Get the free space from the volume group name in input 
-    let output = Command::new("vgs") 
-        .output()   
-        .expect("Error during vgs execution");
+    let stdout = str::from_utf8(&output.stdout).expect("Invalid UTF-8 in xl info output");
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut vfree_mb: Option<u64> = None;
 
     for line in stdout.lines() {
-        if line.contains("VG"){
-            continue;
-        }
-
-        let columns: Vec<&str> = line.split_whitespace().collect();
-
-        if line.contains(group_name){
-            if let Some(VFree) = columns.get(6){
-                let vfree_gb = VFree.trim_end_matches('g').replace(",", ".");
-                if let Ok(vfree_gb_value) = vfree_gb.parse::<f64>() {
-                    vfree_mb = (vfree_gb_value * 1000.0).round() as u64; // GB to MB
-                } else {
-                    println!("Error parsing value of VFree.");
-                }
+        if line.trim_start().starts_with("free_memory") {
+            if let Some(value_str) = line.split(':').nth(1) {
+                vfree_mb = value_str.trim().parse::<u64>().ok();
             }
         }
     }
 
-    if vfree_mb == 0 {
+    match vfree_mb {
+        Some(value) => logging::log_message(logging::Level::Info, &format!("Free memory: {} MB", value)),
+        None => eprintln!("Could not find 'free_memory' in xl info output"),
+    }
+    
+    if vfree_mb == Some(0) {
+        logging::log_message(logging::Level::Error, "No free memory available in the specified volume group.");
         return Err("Error no mem free".to_owned().into());
     }
 
     //Ceck that there is enaugh mem
-    if *storage_request > vfree_mb {   
-        return Err("Error not enough mem free".to_owned().into());        
+    if let Some(free_mb) = vfree_mb {
+        if *storage_request > free_mb {   
+            logging::log_message(logging::Level::Error, "Not enough free memory in the specified volume group.");
+            return Err("Error not enough mem free".to_owned().into());        
+        }
+    } else {
+        logging::log_message(logging::Level::Error, "Could not determine free memory.");
+        return Err("Error could not determine free memory".to_owned().into());
     }
 
 
@@ -79,14 +81,14 @@ pub fn memconf(
                                        vgs,&lvm_name));
     }else{
         let volume_size_str = format!("{}M", storage_request);
-        c.conf
-            .push_str(&format!("\n#storage_request = {} \ndisk = ['{}/{},raw,xvda,rw']\n",
-                                       volume_size_str,vgs,&lvm_name));
+        //c.conf.push_str(&format!("\n#storage_request = {} \ndisk = ['{}/{},raw,xvda,rw']\n",volume_size_str,vgs,&lvm_name));
+        //Remove disk line from config file
+        c.conf.push_str(&format!("#storage_request = {}",volume_size_str));
     }
 
 
 
-    //Put the memory rewuest in the config file
+    //Put the memory request in the config file
     if *ram_request == 0{
 
         c.conf

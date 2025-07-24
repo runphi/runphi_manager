@@ -27,12 +27,12 @@ pub fn bootconf(
     }
     
     if ic.ramdisk.is_empty(){
-        ic.ramdisk = format!("/root/initrd.gz").to_string();
+        //for x68_64, we use the ramdisk provided by the image
+        //ic.ramdisk = format!("/root/initrd.gz").to_string(); //Commented becauses raises an error if the file does not exist
     }
 
-    c.conf.
-        push_str(&format!("\n\nkernel = \"{}\" \n\nramdisk = \"{}\" \n\n", ic.inmate, ic.ramdisk));
-
+    //c.conf.push_str(&format!("\n\nkernel = \"{}\" \n\nramdisk = \"{}\" \n\n", ic.inmate, ic.ramdisk)); remove the ramdisk
+    c.conf.push_str(&format!("kernel = \"{}\" \n", ic.inmate));
 
 
     //idk what to do with cpio

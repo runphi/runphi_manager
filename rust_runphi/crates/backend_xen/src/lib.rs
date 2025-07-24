@@ -5,10 +5,8 @@
 
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
-use regex::Regex;
 use std::error::Error;
-use std::fs::{self, File};
-use std::io::{self, BufRead};
+use std::fs::{self};
 use std::process::Command;
 use std::str;
 //use std::fs::OpenOptions;
@@ -54,32 +52,33 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
         .arg(containerid)
         .output()
         .expect("Failed to execute command");
-    // 
+    // Disk stuff, no disk in arm
+    // TODO: for x86_64, we need to remove the disk from the vg
     // Construct the file path
-    let conffile = format!("{}/config.cfg", crundir);
+    //let conffile = format!("{}/config.cfg", crundir);
 
-    let file = File::open(conffile.clone())?;
-    let reader = io::BufReader::new(file);
+    //let file = File::open(conffile.clone())?;
+    //let reader = io::BufReader::new(file);
 
-    let mut disk = String::new();
+    // let mut disk = String::new();
     
-    let re_disk = Regex::new(r#"disk\s*=\s*\[\s*'(/dev/[^,]+)"#)
-        .unwrap();
+    // let re_disk = Regex::new(r#"disk\s*=\s*\[\s*'(/dev/[^,]+)"#)
+    //     .unwrap();
     
-    for line in reader.lines() {
-        let line = line?; 
+    // for line in reader.lines() {
+    //     let line = line?; 
 
-        if let Some(captures) = re_disk.captures(&line) {
-            disk = captures.get(1).unwrap().as_str().to_string();
-        }
-    }
+    //     if let Some(captures) = re_disk.captures(&line) {
+    //         disk = captures.get(1).unwrap().as_str().to_string();
+    //     }
+    // }
     
-    //sudo lvremove /dev/vg_my_group/lv_my_volume
-    let _ = Command::new("lvremove")
-        .arg(disk)
-        .arg("-y")
-        .output()
-        .expect("Failed to execute command");
+    // //sudo lvremove /dev/vg_my_group/lv_my_volume
+    // let _ = Command::new("lvremove")
+    //     .arg(disk)
+    //     .arg("-y")
+    //     .output()
+    //     .expect("Failed to execute command");
 
 
     //writeln!(logfile, "lib.rs after destroy")?; //DEBUG
@@ -106,45 +105,47 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
     // Read bundle and pidfile paths from the filesystem
     let conffile = format!("{}/config.cfg", fc.crundir);
 
-    let file = File::open(conffile.clone())?;
-    let reader = io::BufReader::new(file);
+    // Disk stuff, no disk in arm
+    //TODO: for x86_64, we need to manage the disk
+    //let file = File::open(conffile.clone())?;
+    //let reader = io::BufReader::new(file);
 
-    let mut storage_request = String::new();
-    let mut disk = String::new();
+    //let mut storage_request = String::new();
+    // let mut disk = String::new();
 
-    let re_st = Regex::new(r#"#storage_request\s*=\s*(\d+M)"#) // Es: #storage_request = 1024M
-        .unwrap();
-    let re_disk = Regex::new(r#"disk\s*=\s*\[\s*'(/dev/[^,]+)"#)
-        .unwrap();
+    // let re_st = Regex::new(r#"#storage_request\s*=\s*(\d+M)"#) // Es: #storage_request = 1024M
+    //     .unwrap();
+    // let re_disk = Regex::new(r#"disk\s*=\s*\[\s*'(/dev/[^,]+)"#)
+    //     .unwrap();
 
-    for line in reader.lines() {
-        let line = line?; 
+    // for line in reader.lines() {
+    //     let line = line?; 
 
-        if let Some(captures) = re_st.captures(&line) {
-            storage_request = captures.get(1).unwrap().as_str().to_string();
-        }
+    //     if let Some(captures) = re_st.captures(&line) {
+    //         storage_request = captures.get(1).unwrap().as_str().to_string();
+    //     }
 
-        if let Some(captures) = re_disk.captures(&line) {
-            disk = captures.get(1).unwrap().as_str().to_string();
-        }
-    }
+    //     if let Some(captures) = re_disk.captures(&line) {
+    //         disk = captures.get(1).unwrap().as_str().to_string();
+    //     }
+    // }
 
-    let mut parts = disk.rsplitn(2, '/');
+    // let mut parts = disk.rsplitn(2, '/');
     
-    // The firts part will be "name"
-    let name = parts.next().unwrap();
+    // // The firts part will be "name"
+    // let name = parts.next().unwrap();
     
-    // The second one will be "/dev/gname"
-    let gname_path = parts.next().unwrap();
+    // // The second one will be "/dev/gname"
+    // let gname_path = parts.next().unwrap();
 
-    let _ = Command::new("lvcreate")
-        .arg("-L")
-        .arg(storage_request) 
-        .arg("-n")
-        .arg(name)
-        .arg(gname_path)   
-        .output()
-        .expect("Error during vgs execution");
+    // let _ = Command::new("lvcreate")
+    //     .arg("-L")
+    //     .arg(storage_request) 
+    //     .arg("-n")
+    //     .arg(name)
+    //     .arg(gname_path)   
+    //     .output()
+    //     .expect("Error during vgs execution");
 
 
     // The command is independent of the Linux architecture and the guest OS.
