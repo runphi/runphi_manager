@@ -6,11 +6,11 @@
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use std::error::Error;
-use std::fs::{self};
+use std::fs::{self, OpenOptions};
 use std::process::Command;
 use std::str;
 //use std::fs::OpenOptions;
-//use std::io::Write;
+use std::io::Write;
 //use std::time::Instant; //TIME CLOCK MONOTONIC
 
 use f2b;
@@ -102,6 +102,9 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
 // Create spawns a process, caronte, that is required to keep the container open. Caronte is set as
 // container init, and as long as containerd sees that is alive, the container is kept open
 pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
+    
+    //log_timestamp("Create_Guest_Start")?; //Just for boot times timeline extraction
+
     // Read bundle and pidfile paths from the filesystem
     let conffile = format!("{}/config.cfg", fc.crundir);
 
@@ -165,7 +168,8 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
 
     std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
 
-    //writeln!(logfile, "lib.rs createguest end")?; //DEBUG
+    //log_timestamp("Create_Guest_End")?; //Just for boot times timeline extraction
+
     Ok(())
 }
 
@@ -202,17 +206,21 @@ pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> 
 //     return Ok(());
 //}
 
-
-// fn append_message(message: &str) -> Result<(), Box<dyn Error>> {  //TIME
-
-//     // Open the file in append mode, create it if it doesn't exist
-//     let mut log_lib = OpenOptions::new()
-//     .create(true)
-//     .append(true)
-//     .open("/usr/share/runPHI/log_lib.txt")?;
+#[allow(dead_code)]
+fn log_timestamp(message: &str) -> std::io::Result<()> {
+    let timestamp = fs::read_to_string("/dev/arm_timer")?;
+    let timestamp = timestamp.trim();
     
-//     // Write the message and current time to the file, separated by an equal sign
-//     writeln!(log_lib, "{}", message)?;
+    // Append to your timestamp file
+    let log_entry = format!("{} - {}\n", timestamp, message);
     
-//     Ok(())
-// }
+    // Use OpenOptions to append instead of overwriting
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/root/boot_times_raw_data.txt")?;
+    
+    file.write_all(log_entry.as_bytes())?;
+    
+    Ok(())
+}

@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     logging::init_logger(Some(std::path::PathBuf::from(std::path::Path::new("/usr/share/runPHI/log.txt"))));//opts.global.log);
     
-    logging::log_message(logging::Level::Info,  format!("runphi main is starting").as_str());
+    logging::log_message(logging::Level::Debug,  format!("runphi main is starting").as_str());
 
     let _ = match opts.subcmd {
         SubCommand::Standard(cmd) => match *cmd {
