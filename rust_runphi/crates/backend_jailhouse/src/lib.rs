@@ -17,6 +17,7 @@ use toml::Value;
 
 use f2b;
 use logging;
+#[allow(unused_imports)]
 use logging::timer;
 
 #[allow(non_snake_case)]

@@ -25,6 +25,7 @@ pub mod templates;
 pub mod rpu;
 use crate::configGenerator::templates::*;
 
+#[allow(unused_imports)]
 use logging::timer;
 
 const WORKPATH: &str = "/usr/share/runPHI";
