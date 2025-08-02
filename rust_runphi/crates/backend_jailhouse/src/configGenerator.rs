@@ -8,7 +8,7 @@ use std::error::Error;
 //use std::fs::{File, self, OpenOptions};
 use std::fs;
 use std::io::Write;
-use std::time::Instant;   //TIME CLOCK MONOTONIC
+//use std::time::Instant;   //TIME CLOCK MONOTONIC
 use std::process::Command;
 use std::str;
 use toml::{Value, map::Map};
@@ -24,6 +24,8 @@ pub mod network;
 pub mod templates;
 pub mod rpu;
 use crate::configGenerator::templates::*;
+
+use logging::timer;
 
 const WORKPATH: &str = "/usr/share/runPHI";
 //const RUNDIR: &str = "/run/runPHI";
@@ -68,6 +70,8 @@ impl Backendconfig {
 pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>, Box<dyn Error>> {
     logging::log_message(logging::Level::Debug, format!("Starting config generator for id {}", &fc.containerid).as_str());
 
+    //let start = timer::capture(); //TIMELINE
+
     let mut c = Backendconfig::new();
     c.conffile = format!("{}/config{}.conf", fc.crundir, fc.containerid);
 
@@ -83,10 +87,10 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     c.rpu_req = config.rpu_req;
 
     // Read the state of the machine from the state.toml file (in particular free memory and free bdfs)
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
     let (segments, bdf, rcpus) = retrieve_state()?;
-    //log_elapsed_time(start,"Duration of retrieve state"); //TAKE THE END TIME OF THE PHASE
-
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Retrieve state")?;
     // Update the struct
     c.segments = segments;
     c.bdf = bdf;
@@ -94,9 +98,10 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //c.preamble = preamble;
 
     logging::log_message(logging::Level::Debug, format!("Config helper start for id {}", &fc.containerid).as_str());
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
     let _ = confighelperstart(fc, &mut c, &config);
-    //log_elapsed_time(start, "Duration of helperstart"); //TAKE THE END TIME OF THE PHASE
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "helperstart")?;
 
     // This region of code could be extended with code to retrieve other specific Docker's flags which set CPU limitations
     // cpus where allow guest execution set by Docker's flag 'cpuset-cpus'
@@ -128,7 +133,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     */
 
     logging::log_message(logging::Level::Debug, format!("Configuring CPU for id {}", &fc.containerid).as_str());
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
     //If rpu_req is true we are requesting RPUs and not CPUs
     //c.rpu_req=true; //FOR TESTING PURPOSES ALWAYS ALLOCATE RPUs, COMMENT IN THE FINAL CODE
     if c.rpu_req{
@@ -142,7 +147,8 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
         //let _ = rpu::rpuconf(&mut c, &rpus);
     }    
     //logging::log_message(logging::Level::Debug, format!("\nconfiguration after cpuconf is  {}", c.conf).as_str());
-    //log_elapsed_time(start,"Duration of configuration of CPU"); //TAKE THE END TIME OF THE PHASE
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "CPU Configuration")?;
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
     // Extract values from the JSON structure
     //In the json structure only limit is created by kubernetes memory reservation doesn't exist so I'll comment it
@@ -169,15 +175,17 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //Pass everything to memconfig
     logging::log_message(logging::Level::Debug, format!("Configuring memory for id {}", &fc.containerid).as_str());
     
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
     let _ = mem::memconfig(&mut c, &mem_request_hex);
-    //log_elapsed_time(start,"Duration of configuration of Memory"); //TAKE THE END TIME OF THE PHASE
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Memory Configuration")?;
 
     logging::log_message(logging::Level::Debug, format!("Configuring Device for id {}", &fc.containerid).as_str());
     
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
     let _ = device::devconfig(&mut c);
-    //log_elapsed_time(start,"Duration of configuration of Device"); //TAKE THE END TIME OF THE PHASE
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Device Configuration")?;
 
     let _ = boot::bootconfbackend(fc, &mut config);
 
@@ -201,7 +209,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _ = communication::communicationconfig(&mut c); //communication è stato incluso direttamente nel preamble
 
     // Call save_state and log the result
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
     match save_state(
         &fc.containerid,
         &c.segments,
@@ -213,14 +221,19 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
         Ok(_) => logging::log_message(logging::Level::Debug, format!("State saved successfully for id {}", &fc.containerid).as_str()),
         Err(_e) => logging::log_message(logging::Level::Debug, format!("Failed to save state for id {}", &fc.containerid).as_str()),
     }
-    //log_elapsed_time(start,"Duration of save state"); //TAKE THE END TIME OF THE PHASE
-
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
-    let _ = confighelperend(fc, &mut c, &config);
-    //log_elapsed_time(start,"Duration of compile"); //TAKE THE END TIME OF THE PHASE
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Save state")?;
 
     //logging::log_message(logging::Level::Debug, format!("Finishing configuration for id {}", &fc.containerid).as_str());
     logging::log_message(logging::Level::Trace, format!("\nactual configuration is  {}", c.conf).as_str());
+
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Config Generation")?;
+
+    //let start = timer::capture(); //TIMELINE
+    let _ = confighelperend(fc, &mut c, &config);
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Compilation")?;
     
     return Ok(config);
 }
@@ -519,19 +532,6 @@ fn save_state(
     fs::write(&file_path, updated_content)?;
 
     Ok(())
-}
-
-// Function to log the elapsed time with a custom message
-#[allow(dead_code)]
-fn log_elapsed_time(start: Instant, message: &str) {
-    // Calculate elapsed time from the provided start time
-    let elapsed_ns = start.elapsed().as_nanos();
-
-    // Log the elapsed time along with the message
-    logging::log_message(
-        logging::Level::Debug,
-        &format!("{} :[{} ns]",  message , elapsed_ns),
-    );
 }
 
 // TEST MODULE 

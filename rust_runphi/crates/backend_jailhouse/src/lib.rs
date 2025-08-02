@@ -13,10 +13,11 @@ use std::path::Path;
 use std::process::Command;
 use std::str;
 use toml::Value;
-use std::time::Instant; //TIME CLOCK MONOTONIC
+//use std::time::Instant; //TIME CLOCK MONOTONIC
 
 use f2b;
 use logging;
+use logging::timer;
 
 #[allow(non_snake_case)]
 pub mod configGenerator;
@@ -162,7 +163,7 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
     logging::log_message(logging::Level::Debug, format!("Start guest for cell with id {}", containerid).as_str());
-    //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
     let os_content = std::fs::read_to_string(format!("{}/OS", crundir))?;
     let os = os_content.trim();
     if os == "linux" {
@@ -171,19 +172,41 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
         let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "start", containerid);
         logging::log_message(logging::Level::Debug, format!("Starting cell with id {}", containerid).as_str());
         logging::log_message(logging::Level::Trace, format!("Starting cell by calling: {}", &command_str).as_str());
-        let _ = Command::new(JAILHOUSE_PATH)
+        
+        /* let _ = Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("start")
             .arg(containerid)
             .output()
-            .expect("Failed to execute command");
+            .expect("Failed to execute command"); */
+
+        // Spawn the command to start the jailhouse cell
+        // This allows the process to run asynchronously
+        // and we can continue without blocking the main thread.
+        // This is useful if you want to log the start time and continue with other tasks.
+        let mut start_process = Command::new(JAILHOUSE_PATH)
+            .arg("cell")
+            .arg("start")
+            .arg(containerid)
+            .spawn()
+            .expect("Failed to spawn jailhouse cell start");
+
+        // Log immediately - this captures the moment the cell creation begins
+        //let end = timer::capture();
+        //timer::log_elapsed(start, end, "Cell start")?;
+        //timer::log_phase_at(end, "Cell started")?;  // Uses the same end timestamp
+
+        // Wait for jailhouse cell start to finish
+        let _ = start_process.wait().expect("Failed to wait for jailhouse cell start");
     }
-    //log_elapsed_time(start,"Duration of start cell"); //TAKE THE END TIME OF THE PHASE
+    
     return Ok(());
 }
 
 pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
-    //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
+
+    //let start = timer::capture(); //TIMELINE
+
     let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "shutdown", containerid);
     logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
     let _ = Command::new(JAILHOUSE_PATH)
@@ -198,7 +221,9 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
     let pidk: i32 = pidtokill.parse().expect("Failed to parse number");
     let pid = Pid::from_raw(pidk);
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
-    //log_elapsed_time(start,"Duration of stop cell"); //TAKE THE END TIME OF THE PHASE
+
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Cell stop")?;
 
     return Ok(());
 }
@@ -207,7 +232,8 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
 
-    //let start_time = Instant::now(); //TAKE THE START TIME OF THE PHASE
+    //let start = timer::capture(); //TIMELINE
+
     let _ = destroy_update_state(containerid);
 
     // Execute the command to destroy the jailhouse cell using the name of the cell containerid
@@ -228,7 +254,9 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
     fs::remove_dir_all(&crundir).ok();
 
-    //log_elapsed_time(start,"Duration of destroy cell"); //TAKE THE END TIME OF THE PHASE
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Cell destroy")?;
+
     return Ok(());
 }
 
@@ -240,6 +268,9 @@ pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> 
 // Create spawns a process, caronte, that is required to keep the container open. Caronte is set as
 // container init, and as long as containerd sees that is alive, the container is kept open
 pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
+
+    //let start: u32 = timer::capture(); //TIMELINE
+
     // Read bundle and pidfile paths from the filesystem
     let cellfile = format!("{}/{}.cell", fc.crundir, fc.containerid);
 
@@ -252,7 +283,6 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         
         //TODO: absolute path NOPE
         logging::log_message(logging::Level::Debug, format!("Creating cell on cellfile {}", &cellfile).as_str());
-        //let start = Instant::now(); //TAKE THE START TIME OF THE PHASE
         let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "create", cellfile);
         logging::log_message(logging::Level::Trace, format!("Creating cell by calling: {}", &command_str).as_str());
         Command::new(JAILHOUSE_PATH)
@@ -339,7 +369,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             cmd_load.arg("cell").arg("load").arg(&fc.containerid).arg(&ic.inmate);
 
             // Append the starting vaddress when present in the JSON
-            //TODO MANAGE OMNIVISOR CONTAINERS APU
+            //TODO: MANAGE OMNIVISOR CONTAINERS APU
             if !ic.starting_vaddress.is_empty() {
                 cmd_load.arg("-a").arg(&ic.starting_vaddress);
             } 
@@ -360,8 +390,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             .arg(&fc.containerid)
             .spawn()?;
         let pid = start_output.id();
-        std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
-        //log_elapsed_time(start,"Duration of create cell"); //TAKE THE END TIME OF THE PHASE
+        std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");        
     
     } else if ic.os_var == "linux" {
         // Here we manage separately the (unlikely) linux case due to a dedicated jh command
@@ -378,6 +407,8 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         let pid = start_output.id();
         std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
     }
+    //let end = timer::capture(); //TIMELINE
+    //timer::log_elapsed(start, end, "Cell creation")?;
     Ok(())
 }
 
@@ -388,18 +419,6 @@ pub fn storeinfo(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), 
     return Ok(());
 }
 
-// Function to log the elapsed time with a custom message
-#[allow(dead_code)]
-fn log_elapsed_time(start: Instant, message: &str) {
-    // Calculate elapsed time from the provided start time
-    let elapsed_ns = start.elapsed().as_nanos();
-
-    // Log the elapsed time along with the message
-    logging::log_message(
-        logging::Level::Debug,
-        &format!("{} :[{} ns]",  message , elapsed_ns),
-    );
-}
 // pub fn storeadditionalinfo(c: &mut Backendconfig) -> Result<(), Box<dyn Error>> {
 //     if !c.dtb.is_empty() {
 //         let mut file = fs::File::create(format!("{}/dtb", c.crundir)).expect("Failed to create dtb file");
