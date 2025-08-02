@@ -150,13 +150,27 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
     //     .output()
     //     .expect("Error during vgs execution");
 
-
-    // The command is independent of the Linux architecture and the guest OS.
-    let _ = Command::new("xl")
+    // This is an asynchronous command, not good to take times
+    /* let _ = Command::new("xl")
         .arg("create")
         .arg(conffile)
         .output()
         .expect("Failed to execute command");
+
+    log_timestamp("Create_Guest_End")?; */
+
+    // Launch xl create asynchronously
+    let mut xl_process = Command::new("xl")
+        .arg("create")
+        .arg(conffile)
+        .spawn()
+        .expect("Failed to spawn xl create");
+
+    // Log immediately - this captures the moment the domain creation begins
+    //log_timestamp("Create_Guest_End")?;
+
+    // Wait for xl create to finish
+    let _ = xl_process.wait().expect("Failed to wait for xl create");
 
     let command = format!("echo \"caronte is listening\"");
 
