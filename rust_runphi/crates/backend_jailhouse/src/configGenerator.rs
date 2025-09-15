@@ -284,28 +284,27 @@ fn confighelperstart(
             return Err("Field 'preamble' not found in [jailhouse_preamble]".into());
         }
 
-    } else if ic.os_var == "linux" {
-        c.conf = format!(
-            "#include \"cell.h\"
-    struct {{
-        struct jailhouse_cell_desc cell;
-    }} __attribute__((packed)) config = {{
-        .cell = {{
-            .signature = JAILHOUSE_CELL_DESC_SIGNATURE,
-            .revision = JAILHOUSE_CONFIG_REVISION,
-            .name = \"{}\",
-            .flags = JAILHOUSE_CELL_PASSIVE_COMMREG |
-                JAILHOUSE_CELL_VIRTUAL_CONSOLE_PERMITTED,
+    } else if ic.os_var == "linux" { //TODO: test and implement linux OS cell
+    //     c.conf = format!(
+    //         "#include \"cell.h\"
+    // struct {{
+    //     struct jailhouse_cell_desc cell;
+    // }} __attribute__((packed)) config = {{
+    //     .cell = {{
+    //         .signature = JAILHOUSE_CELL_DESC_SIGNATURE,
+    //         .revision = JAILHOUSE_CONFIG_REVISION,
+    //         .name = \"{}\",
+    //         .flags = JAILHOUSE_CELL_PASSIVE_COMMREG |
+    //             JAILHOUSE_CELL_VIRTUAL_CONSOLE_PERMITTED,
+    //         .cpu_set_size = sizeof(config.cpus),
+    //         .num_memory_regions = ARRAY_SIZE(config.mem_regions),
+    //         .num_irqchips = ARRAY_SIZE(config.irqchips),
+    //         .num_pci_devices = ARRAY_SIZE(config.pci_devices),
     
-            .cpu_set_size = sizeof(config.cpus),
-            .num_memory_regions = ARRAY_SIZE(config.mem_regions),
-            .num_irqchips = ARRAY_SIZE(config.irqchips),
-            .num_pci_devices = ARRAY_SIZE(config.pci_devices),
-    
-            .vpci_irq_base = 140-32, 
-        }},",
-            fc.containerid
-        );
+    //         .vpci_irq_base = 140-32, 
+    //     }},",
+    //         fc.containerid
+    //     );
     }
     return Ok(());
 }
