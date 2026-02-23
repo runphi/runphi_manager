@@ -1,6 +1,6 @@
 //*********************************************
 // Authors:
-// Federico Boccola (francesco.boccola@unina.it)
+// Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 use std::fs::OpenOptions;

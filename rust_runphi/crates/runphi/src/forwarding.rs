@@ -71,6 +71,9 @@ pub fn runc_forward_ifnecessary_delete(config: &serde_json::Value, containerid: 
 // Here the problem is that we do not really create a pause contaienr, as default in kubernetes
 // The forwarding is also needed for monitoring daemons that can run on the node
 // Hence a more complex parsing may be needed to specify the runtime of DaemonSets (in upper layers??)
+// TODO: Devise a more robust way to identify the need of forwarding, maybe with a specific annotation in the config file, 
+// or with a specific argument in the command line (but this may be not backward compatible with kubernetes)
+// We need to do this to make standard docker containers that ususally would need runc "work" with runPHI
 pub fn need_forward_to_runc(config: &serde_json::Value, containerid: &str) -> bool {
     // Check if `config.process.args` exists and is an array
     if let Some(args) = config
