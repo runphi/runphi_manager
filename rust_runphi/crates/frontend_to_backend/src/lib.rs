@@ -50,9 +50,14 @@ pub struct ImageConfig {
     // moreover, in case of Jailhouse, the user should provide the path, in the container fs, of the inmate to run
     pub cpio: String,
     #[serde(default)]
-    // if OSvar is "linux", the OS file contains the image of the linux kernel
-    // if the OSvar contains anything else, like "zephyr", then a file integrating the runtime is loaded
-    // When avialable, this variable could identify also a bare metal runtime like a WASM OS
+    // OSvar stores information in a file /OS to identify the OS to load.
+    // If OSvar is "linux", the OS file contains the image of the linux kernel.
+    // If OSvar is "zephyr", zephyr is loaded; zephyr is a de-facto bare-metal
+    // inmate and the os_var is only needed at the moment to mock up the .cell
+    // file, but it is useful to keep the OS information around for the future.
+    // When available, this variable could also identify another bare-metal
+    // runtime like a WASM OS.
+    //TODO: drop the zephyr os_var once the .cell mockup no longer needs it.
     pub os_var: String,
     #[serde(default)]
     // When available, a custom kernel and ramkdisk shipped in the container can be specified. In this case the
