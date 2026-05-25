@@ -6,3 +6,4 @@ build/*
 .viminfo
 .vscode
 rust_runphi/target/*
+.claude/
