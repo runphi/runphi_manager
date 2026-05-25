@@ -13,7 +13,6 @@ use std::fs;
 
 use liboci_cli::{GlobalOpts, StandardCmd};
 use logging;
-use logging::timer;
 
 // High-level commandline option definition
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
@@ -65,7 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize the logging and timer modules
     logging::init_logger(Some(std::path::PathBuf::from(std::path::Path::new("/usr/share/runPHI/log.txt"))));//opts.global.log);
-    timer::initialize()?;
+    backend::timer::install()?;
 
     //timer::log_phase("runPHI main started")?; //To log the time of runphi start
 

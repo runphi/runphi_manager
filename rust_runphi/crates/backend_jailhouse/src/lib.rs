@@ -17,11 +17,10 @@ use toml::Value;
 
 use f2b;
 use logging;
-#[allow(unused_imports)]
-use logging::timer;
 
 #[allow(non_snake_case)]
 pub mod configGenerator;
+pub mod timer;
 
 const WORKPATH: &str = "/usr/share/runPHI";
 //const RUNDIR: &str = "/run/runPHI";
