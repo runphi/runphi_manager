@@ -1,3 +1,6 @@
+//*********************************************
+// Authors: Francesco Boccola (francesco.boccola@unina.it)
+//*********************************************
 
 use std::error::Error;
 use std::fs::{self, OpenOptions};
@@ -44,6 +47,9 @@ impl Backendconfig {
 pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>, Box<dyn Error>> {
 
     //log_timestamp("Config_Gen_Start")?; //Just for boot times timeline extraction
+    // Equivalent using the logging::timer module (reads /dev/arm_timer once, logs to LOG_PATH):
+    //let _cfg_gen_start = logging::timer::capture();
+    //let _ = logging::timer::log_phase("Config_Gen_Start");
 
     logging::log_message(logging::Level::Info,  format!("starting config generator").as_str());
     let mut c = Backendconfig::new();
@@ -143,6 +149,11 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     logging::log_message(logging::Level::Debug,  format!("Config file generated at: {}", c.conffile).as_str());
     logging::log_message(logging::Level::Debug,  format!("Config generation is:\n{}", c.conf).as_str());
     //log_timestamp("Config_Gen_End")?; //Just for boot times timeline extraction
+    // Equivalent using the logging::timer module:
+    //let _ = logging::timer::log_phase("Config_Gen_End");
+    // Or, to also record the elapsed duration since _cfg_gen_start:
+    //let _cfg_gen_end = logging::timer::capture();
+    //let _ = logging::timer::log_elapsed(_cfg_gen_start, _cfg_gen_end, "config_generate");
 
     return Ok(config);
 }

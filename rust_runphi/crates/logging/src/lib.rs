@@ -13,6 +13,8 @@ use std::env;
 use lazy_static::lazy_static;
 pub use log::Level;
 
+pub mod timer;
+
 // Define the Logger struct
 #[derive(Debug)]
 pub struct Logger {
