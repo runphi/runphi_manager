@@ -1,138 +1,126 @@
 //*********************************************
 // Authors: Marco Barletta (marco.barletta@unina.it)
+//          Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
 use serde_json;
-use std::fs;
-use std::fs::OpenOptions;
-use std::io::{self, BufRead, BufReader, Write};
-use std::path::Path;
-use std::process::{exit, Command};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
-// This file implements all the logic related to the forwarding to runc
+// Vanilla runc binary used when a container is not managed by runPHI.
+// /usr/local/sbin is the FHS slot for locally-installed system-administration
+// binaries invoked by daemons (containerd/dockerd run as root); it avoids
+// clashing with the distro-managed /usr/bin/runc that switch_to_runphi.sh
+// backs up here.
+pub const RUNC_VANILLA_BIN: &str = "/usr/local/sbin/runc_vanilla";
 
-// forward to runc if the filter detects the need
-// THE FUNCTION MAY EXIT THE PROGRAM
-// This function always has the config in the json structure, however this is non empty only
-// for create case.
-//TODO: improve code quality here, do not manage program exit inside function
-pub fn runc_forward_ifnecessary(config: &serde_json::Value, containerid: &str) {
-    if need_forward_to_runc(&config, &containerid) {
-        logging::log_message(logging::Level::Info,  format!("Forwarding to runc id {}", &containerid).as_str());
-        call_runc()
+// Per-container state directory created by runPHI on `create`. The presence
+// of this directory is the source of truth for whether a container is
+// runPHI-managed for OCI commands other than `create`.
+pub const RUNPHI_STATE_DIR: &str = "/run/runPHI";
+
+// File inside the container rootfs that marks the image as runPHI-managed.
+// Same file parsed by frontend_to_backend::ImageConfig::get_from_file.
+const RUNPHI_BOOT_CONFIG_REL: &str = "boot/config.json";
+
+// OCI annotation that explicitly selects the low-level runtime, overriding
+// auto-detection. Recognized values: "runphi" or "runc".
+const RUNTIME_ANNOTATION: &str = "org.runphi.runtime";
+
+// Outcome of a forwarding check. The caller (main) decides what to do
+// (exec runc and exit, or continue with the runPHI flow), keeping
+// process-control out of this module.
+pub enum ForwardDecision {
+    UseRunphi,
+    ForwardToRunc,
+}
+
+// Decide whether the OCI `create` for the given container must be forwarded
+// to vanilla runc. Selection rules, in order:
+//   1. Explicit annotation `org.runphi.runtime` ("runphi" or "runc").
+//   2. Auto-detect: a container is treated as runPHI-managed iff its rootfs
+//      contains `/boot/config.json` (the boot parameters for the partitioned
+//      cell). Anything else - including the Kubernetes pause container and
+//      arbitrary docker images - is forwarded to runc.
+pub fn decide_create(config: &serde_json::Value, bundle: &Path) -> ForwardDecision {
+    if let Some(runtime) = config
+        .pointer(&format!("/annotations/{}", RUNTIME_ANNOTATION))
+        .and_then(serde_json::Value::as_str)
+    {
+        match runtime {
+            "runphi" => return ForwardDecision::UseRunphi,
+            "runc" => return ForwardDecision::ForwardToRunc,
+            other => logging::log_message(
+                logging::Level::Warn,
+                format!(
+                    "Unknown {}=\"{}\", falling back to auto-detect",
+                    RUNTIME_ANNOTATION, other
+                )
+                .as_str(),
+            ),
+        }
+    }
+
+    if rootfs_has_runphi_boot_config(config, bundle) {
+        ForwardDecision::UseRunphi
+    } else {
+        ForwardDecision::ForwardToRunc
     }
 }
 
-pub fn call_runc() {
-    let mut runccmd = Command::new("/usr/local/sbin/runc_vanilla");
-    for arg in std::env::args().skip(1) {
+// Decide whether an OCI command other than `create` must be forwarded.
+// A container is runPHI-managed iff its state directory still exists.
+pub fn decide_existing(containerid: &str) -> ForwardDecision {
+    if Path::new(RUNPHI_STATE_DIR).join(containerid).exists() {
+        ForwardDecision::UseRunphi
+    } else {
+        ForwardDecision::ForwardToRunc
+    }
+}
+
+// Exec vanilla runc with the same arguments as the current invocation
+// and return its exit code (defaults to 1 if runc cannot be launched).
+pub fn call_runc() -> i32 {
+    let forwarded_args: Vec<String> = std::env::args().skip(1).collect();
+    logging::log_message(
+        logging::Level::Trace,
+        format!(
+            "Redirecting to runc: {} {}",
+            RUNC_VANILLA_BIN,
+            forwarded_args.join(" ")
+        )
+        .as_str(),
+    );
+    let mut runccmd = Command::new(RUNC_VANILLA_BIN);
+    for arg in &forwarded_args {
         runccmd.arg(arg);
     }
     match runccmd.status() {
-        Ok(status) => {
-            if status.success() {
-                exit(0);
-            } else {
-                exit(1);
-            }
-        }
-        Err(_) => {
-            exit(1);
+        Ok(status) => status.code().unwrap_or(1),
+        Err(e) => {
+            logging::log_message(
+                logging::Level::Error,
+                format!("Failed to exec {}: {}", RUNC_VANILLA_BIN, e).as_str(),
+            );
+            1
         }
     }
 }
 
-pub fn runc_forward_ifnecessary_delete(config: &serde_json::Value, containerid: &str) {
-    if need_forward_to_runc(&config, &containerid) {
-        logging::log_message(logging::Level::Info,  format!("Forwarding to runc id {}", &containerid).as_str());
-        let mut runccmd = Command::new("/usr/local/sbin/runc_vanilla");
-        for arg in std::env::args().skip(1) {
-            runccmd.arg(arg);
-        }
-        match runccmd.status() {
-            Ok(status) => {
-                if status.success() {
-                    delete_entry_table(&containerid);
-                    exit(0);
-                } else {
-                    logging::log_message(logging::Level::Error, "Runc returned an error");
-                    exit(1);
-                }
-            }
-            Err(_) => {
-                logging::log_message(logging::Level::Error, "Runc returned an error");
-                exit(1);
-            }
-        }
-    }
-}
-
-// Recognize if to forward to runc
-// Here the problem is that we do not really create a pause contaienr, as default in kubernetes
-// The forwarding is also needed for monitoring daemons that can run on the node
-// Hence a more complex parsing may be needed to specify the runtime of DaemonSets (in upper layers??)
-pub fn need_forward_to_runc(config: &serde_json::Value, containerid: &str) -> bool {
-    // Check if `config.process.args` exists and is an array
-    if let Some(args) = config
-        .pointer("/process/args")
-        .and_then(serde_json::Value::as_array)
+fn rootfs_has_runphi_boot_config(config: &serde_json::Value, bundle: &Path) -> bool {
+    let rootfs = match config
+        .pointer("/root/path")
+        .and_then(serde_json::Value::as_str)
     {
-        for arg in args {
-            // Check if the element is "/pause" to identify pause containers
-            if let Some(pause) = arg.as_str() {
-                if pause == "/pause" {
-                    let mut redirect_table = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open("/usr/share/runPHI/redirect.txt")
-                        .expect("Failed to open in append table file");
-                    let _ = writeln!(redirect_table, "{}", &containerid);
-                    return true;
-                }
-            }
-        }
-    }
-    // Otherwise, check if the id is in the table.
-    // If it fails to open file, return false (there was no filter to store any ID in the table)
-    if let Ok(lines) = read_lines("/usr/share/runPHI/redirect.txt") {
-        // Consumes the iterator, returns an (Optional) String
-        for line in lines.flatten() {
-            if line.contains(containerid) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
+        Some(p) => p,
+        None => return false,
+    };
 
-// This function, if needed updates the forwarding table removing the id of removed container
-//TODO: parametrize file paths
-fn delete_entry_table(containerid: &str) {
-    let file =
-        fs::File::open("/usr/share/runPHI/redirect.txt").expect("Failed to find redirect file");
-    let reader = BufReader::new(file);
-    let mut lines: Vec<String> = Vec::new();
-    for line in reader.lines() {
-        lines.push(line.expect("Failed to read line"));
-    }
-    // keep the string if it does not match the containerid
-    lines.retain(|line| !line.contains(containerid));
-    let mut redirect_table = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open("/usr/share/runPHI/redirect.txt")
-        .expect("Failed to open in append table file");
-    for line in lines {
-        let _ = writeln!(redirect_table, "{}", line);
-    }
-}
+    let rootfs_path: PathBuf = if Path::new(rootfs).is_absolute() {
+        PathBuf::from(rootfs)
+    } else {
+        bundle.join(rootfs)
+    };
 
-// The output is wrapped in a Result to allow matching on errors.
-// Returns an Iterator to the Reader of the lines of the file.
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<fs::File>>>
-where
-    P: AsRef<Path>,
-{
-    let file = fs::File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+    rootfs_path.join(RUNPHI_BOOT_CONFIG_REL).exists()
 }
