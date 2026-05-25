@@ -1,5 +1,5 @@
 [package]
-name = "backend_jailhouse"
+name = "backend_xen"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,10 +8,8 @@ edition = "2021"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 psutil = "3.3.0"
-chrono = "0.4.38"
+chrono = "0.4.19"
 nix = "0.20.1"
-regex = "1.11.1"
-toml = "0.8.19"
-libc = "0.2"
+regex = "1.5.4"
 f2b = { path = "../frontend_to_backend" }
 logging = { path = "../logging" }
