@@ -9,6 +9,7 @@
 use clap::Parser;
 use std::error::Error;
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use liboci_cli::{GlobalOpts, StandardCmd};
 
@@ -67,8 +68,6 @@ mod forwarding;
 use f2b::paths;
 use forwarding::ForwardDecision;
 
-//TODO: convert strings to Path and PathBuf
-
 // Forward to runc and exit with its status, or continue with runPHI based on `decision`.
 fn forward_or_continue(decision: ForwardDecision, containerid: &str) {
     if let ForwardDecision::ForwardToRunc = decision {
@@ -89,14 +88,14 @@ fn truncate_id(raw: &str) -> String {
 // Boilerplate shared by Start / Kill / Delete / State: truncate the
 // container ID, decide whether to forward to runc (and exit if so),
 // log the action, and build the per-container state directory path.
-fn dispatch_existing(raw_id: &str, verb: &str) -> (String, String) {
+fn dispatch_existing(raw_id: &str, verb: &str) -> (String, PathBuf) {
     let containerid = truncate_id(raw_id);
     forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
     logging::log_message(
         logging::Level::Info,
         format!("{} with id {}", verb, &containerid).as_str(),
     );
-    let crundir = format!("{}/{}", paths::STATE_DIR, containerid);
+    let crundir = Path::new(paths::STATE_DIR).join(&containerid);
     (containerid, crundir)
 }
 
@@ -122,10 +121,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             StandardCmd::Create(create) => {
                 let containerid = truncate_id(&create.container_id);
                 logging::log_message(logging::Level::Debug, "Parse json");
-                let config_json = fs::read_to_string(format!(
-                    "{}/config.json",
-                    &create.bundle.to_string_lossy().into_owned(),
-                ))?;
+                let config_json = fs::read_to_string(create.bundle.join("config.json"))?;
                 let config: serde_json::Value = serde_json::from_str(&config_json)?;
 
                 forward_or_continue(
@@ -138,7 +134,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     logging::Level::Info,
                     format!("Creating with id {}", &containerid).as_str(),
                 );
-                let crundir = format!("{}/{}", paths::STATE_DIR, containerid);
+                let crundir: PathBuf = Path::new(paths::STATE_DIR).join(&containerid);
                 //TODO: fix?, this should not exist
                 fs::remove_dir_all(&crundir).ok();
                 //Create container directory to store runphi-related information

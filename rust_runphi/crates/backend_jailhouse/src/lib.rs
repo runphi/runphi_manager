@@ -9,7 +9,7 @@ use std::error::Error;
 use std::fs::{self};
 use std::os::unix::fs::symlink;
 //use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::str;
 use toml::Value;
@@ -191,10 +191,10 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn startguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     logging::log_message(logging::Level::Debug, format!("Start guest for cell with id {}", containerid).as_str());
     //let start = timer::capture(); //TIMELINE
-    let os_content = std::fs::read_to_string(format!("{}/OS", crundir))?;
+    let os_content = std::fs::read_to_string(crundir.join("OS"))?;
     let os = os_content.trim();
     if os == "linux" {
         println!("Linux non-root cell {} has already been running, connect to Guest through ssh root from localhost to port number exposed", containerid);
@@ -232,7 +232,7 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
-pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn stopguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
 
     //let start = timer::capture(); //TIMELINE
 
@@ -245,7 +245,7 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
             .arg(containerid),
     )?;
     // Now kill caronte
-    let pathtokill = std::fs::read_to_string(format!("{}/pidfile", crundir))?;
+    let pathtokill = std::fs::read_to_string(crundir.join("pidfile"))?;
     let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
     let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
@@ -259,7 +259,7 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
 
 //TODO: We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
-pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn destroyguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
 
     //let start = timer::capture(); //TIMELINE
 
@@ -276,7 +276,7 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     )?;
 
     // Now kill caronte
-    let pathtokill = std::fs::read_to_string(format!("{}/pidfile", crundir))?;
+    let pathtokill = std::fs::read_to_string(crundir.join("pidfile"))?;
     let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
     let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
@@ -289,7 +289,7 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     Ok(())
 }
 
-pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn cleanup(_containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     fs::remove_dir_all(crundir).ok();
     Ok(())
 }
@@ -301,7 +301,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
     //let start: u32 = timer::capture(); //TIMELINE
 
     // Read bundle and pidfile paths from the filesystem
-    let cellfile = format!("{}/{}.cell", fc.crundir, fc.containerid);
+    let cellfile: PathBuf = fc.crundir.join(format!("{}.cell", fc.containerid));
 
     // We have to differentiate among OSes, because linux has a different jh command
     // while other OSes may have special params, e.g. loading address for zephyr
@@ -309,16 +309,16 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         // Handle baremetal or libOS built with application
         // Here we have to wait both commands to return to guarantee ordering, and then we start caronte
         // caronte is needed to keep a pid alive expected by containerd before giving the start
-        
+
         //TODO: absolute path NOPE
-        logging::log_message(logging::Level::Debug, format!("Creating cell on cellfile {}", &cellfile).as_str());
-        let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "create", cellfile);
+        logging::log_message(logging::Level::Debug, format!("Creating cell on cellfile {}", cellfile.display()).as_str());
+        let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "create", cellfile.display());
         logging::log_message(logging::Level::Trace, format!("Creating cell by calling: {}", &command_str).as_str());
         Command::new(JAILHOUSE_PATH)
             .arg("cell")
             .arg("create")
-            .arg(cellfile)
-            .output()?; 
+            .arg(&cellfile)
+            .output()?;
         
         logging::log_message(logging::Level::Debug, format!("Creating cell with id {}", &fc.containerid).as_str());  
         logging::log_message(logging::Level::Trace, format!("The parameter ic.inmate is {}", &ic.inmate).as_str());
@@ -331,8 +331,8 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         // of placing the binary in the appropriate memory area.
         if ic.rpu_req {
             let inmate_name = ic.inmate.rsplit('/').next().unwrap_or("");
-            let sym_destination = format!("{}/{}", FIRMWARE_DIR, &inmate_name);
-            logging::log_message(logging::Level::Trace, format!("The symdest is {}", &sym_destination).as_str());
+            let sym_destination = Path::new(FIRMWARE_DIR).join(inmate_name);
+            logging::log_message(logging::Level::Trace, format!("The symdest is {}", sym_destination.display()).as_str());
            
             // Get the dynamic rcpus value from the state file.
             let rcpu = get_rcpu_for_container(&fc.containerid)?;
@@ -442,9 +442,11 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
 }
 
 pub fn storeinfo(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
-    std::fs::write(format!("{}/bundle", fc.crundir), &fc.bundle)?;
-    std::fs::write(format!("{}/pidfile", fc.crundir), &fc.pidfile)?;
-    std::fs::write(format!("{}/OS", fc.crundir), &ic.os_var)?;
+    // bundle/pidfile are re-read with read_to_string by other commands and
+    // parsed as path strings, so persist them as text rather than raw OsStr bytes.
+    std::fs::write(fc.crundir.join("bundle"), fc.bundle.to_string_lossy().as_bytes())?;
+    std::fs::write(fc.crundir.join("pidfile"), fc.pidfile.to_string_lossy().as_bytes())?;
+    std::fs::write(fc.crundir.join("OS"), &ic.os_var)?;
     Ok(())
 }
 

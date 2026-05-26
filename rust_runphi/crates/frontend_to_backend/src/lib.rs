@@ -6,6 +6,7 @@
 use serde::Deserialize;
 use std::error::Error;
 use std::fs;
+use std::path::{Path, PathBuf};
 
 pub mod paths;
 
@@ -19,12 +20,12 @@ pub mod paths;
 pub struct FrontendConfig {
     // Jsonconfig is the json parsed coming from the upper layer
     pub jsonconfig: serde_json::Value,
-    pub crundir: String,
+    pub crundir: PathBuf,
     pub containerid: String,
-    pub bundle: String,
-    pub mountpoint: String,
-    pub guestconsole: String,
-    pub pidfile: String,
+    pub bundle: PathBuf,
+    pub mountpoint: PathBuf,
+    pub guestconsole: PathBuf,
+    pub pidfile: PathBuf,
 }
 impl Default for FrontendConfig {
     fn default() -> Self {
@@ -36,12 +37,12 @@ impl FrontendConfig {
     pub fn new() -> Self {
         Self {
             jsonconfig: serde_json::Value::Null,
-            crundir: String::new(),
+            crundir: PathBuf::new(),
             containerid: String::new(),
-            bundle: String::new(),
-            mountpoint: String::new(),
-            guestconsole: String::new(),
-            pidfile: String::new(),
+            bundle: PathBuf::new(),
+            mountpoint: PathBuf::new(),
+            guestconsole: PathBuf::new(),
+            pidfile: PathBuf::new(),
         }
     }
 }
@@ -98,18 +99,26 @@ pub struct ImageConfig {
     // TODO: handle default or missing values in a decent way
 }
 impl ImageConfig {
-    pub fn get_from_file(mountpoint: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn get_from_file(mountpoint: &Path) -> Result<Self, Box<dyn Error>> {
         // parsing configuration variables from the file
         //TODO: here is the case to parse also a node default used in the case the container does not specify this
-        let path = format!("{}/{}", mountpoint, paths::BOOT_CONFIG_REL);
+        let path = mountpoint.join(paths::BOOT_CONFIG_REL);
         let json_str = fs::read_to_string(&path)
-            .map_err(|e| format!("cannot read runPHI boot config {}: {}", path, e))?;
+            .map_err(|e| format!("cannot read runPHI boot config {}: {}", path.display(), e))?;
         let mut config: ImageConfig = serde_json::from_str(&json_str)
-            .map_err(|e| format!("malformed runPHI boot config {}: {}", path, e))?;
+            .map_err(|e| format!("malformed runPHI boot config {}: {}", path.display(), e))?;
+        // ic.inmate stays a String because the surrounding code mixes "path
+        // under rootfs" with text rendered into the cell config; a PathBuf
+        // here would just push string conversions outward.
         if !config.inmate.is_empty() {
-            config.inmate = format!("{}{}", mountpoint, config.inmate).trim().to_string();
+            config.inmate = format!("{}{}", mountpoint.display(), config.inmate)
+                .trim()
+                .to_string();
         } else {
-            config.inmate = format!("{}/{}", mountpoint, paths::BOOT_INMATE_DEFAULT_REL);
+            config.inmate = mountpoint
+                .join(paths::BOOT_INMATE_DEFAULT_REL)
+                .display()
+                .to_string();
         }
         Ok(config)
     }

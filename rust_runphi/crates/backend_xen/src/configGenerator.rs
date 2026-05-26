@@ -5,6 +5,7 @@
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::path::PathBuf;
 
 use f2b;
 pub mod boot;
@@ -27,7 +28,7 @@ const LVM_GROUP_NAME: &str = "test-vg";
 pub struct BackendConfig {
     pub conf: String,
     pub cpus: u8,
-    pub conffile: String,
+    pub conffile: PathBuf,
     pub net: String,
 }
 
@@ -43,7 +44,7 @@ impl BackendConfig {
         Self {
             conf: String::new(),
             cpus: 0,
-            conffile: String::new(),
+            conffile: PathBuf::new(),
             net: String::new(),
         }
     }
@@ -59,8 +60,8 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     logging::log_message(logging::Level::Info,  "starting config generator".to_string().as_str());
     let mut c = BackendConfig::new();
-    c.conffile = format!("{}/config.cfg", fc.crundir);
-    logging::log_message(logging::Level::Debug,  format!("Target file path : {}", c.conffile).as_str());
+    c.conffile = fc.crundir.join("config.cfg");
+    logging::log_message(logging::Level::Debug,  format!("Target file path : {}", c.conffile.display()).as_str());
 
     // parsing configuration variables from the file
     //THIS IS THE ACCESS TO JSON.CONFIG FROM DOCKER
@@ -139,9 +140,9 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //the console is entirly wrote in the output file  
     //------------------------------------------------------------------------------------
 
-    if !fc.guestconsole.is_empty() {
-        let mut file = fs::File::create(format!("{}/console", fc.crundir))?;
-        writeln!(file, "{}", fc.guestconsole)?;
+    if !fc.guestconsole.as_os_str().is_empty() {
+        let mut file = fs::File::create(fc.crundir.join("console"))?;
+        writeln!(file, "{}", fc.guestconsole.display())?;
     }
 
 
@@ -151,7 +152,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _ = communication::communicationconfig(&mut c);
     let _ = confighelperend(fc, &mut c, &config);
     logging::log_message(logging::Level::Info,  "Finished config generation".to_string().as_str());
-    logging::log_message(logging::Level::Debug,  format!("Config file generated at: {}", c.conffile).as_str());
+    logging::log_message(logging::Level::Debug,  format!("Config file generated at: {}", c.conffile.display()).as_str());
     logging::log_message(logging::Level::Debug,  format!("Config generation is:\n{}", c.conf).as_str());
     //log_timestamp("Config_Gen_End")?; //Just for boot times timeline extraction
     // Equivalent using the logging::timer module:

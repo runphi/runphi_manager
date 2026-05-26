@@ -28,16 +28,17 @@ pub fn bootconfbackend(
     if !ic.cpio.is_empty() {
         //TODO: does this work??? test
         // Create a .cpio filesystem from rootfs and save it in rootfs/cpio.cpio
+        let cpio_archive = fc.mountpoint.join("cpio.cpio");
         let status = process::Command::new("cpio")
             .arg("-ov")
             .arg(">")
-            .arg(format!("{}/cpio.cpio", fc.mountpoint))
+            .arg(&cpio_archive)
             .status()?;
         if !status.success() {
             return Err(format!("cpio failed (exit {})", status.code().unwrap_or(-1)).into());
         }
 
-        let cpio_content = fs::read_to_string(format!("{}/cpio.cpio", fc.mountpoint))?;
+        let cpio_content = fs::read_to_string(&cpio_archive)?;
         ic.cpio = cpio_content;
     } else {
         ic.cpio = format!("{}/linux/rootfs.cpio.gz", nonrootdefaultpath).to_string();

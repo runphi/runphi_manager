@@ -7,6 +7,7 @@ use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use std::error::Error;
 use std::fs::{self, OpenOptions};
+use std::path::Path;
 use std::process::{Command, Output};
 use std::str;
 //use std::fs::OpenOptions;
@@ -53,19 +54,19 @@ fn run_command(cmd: &mut Command) -> Result<Output, Box<dyn Error>> {
 //const WORKPATH: &str = "/usr/share/runPHI";
 
 
-pub fn startguest(containerid: &str, _crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn startguest(containerid: &str, _crundir: &Path) -> Result<(), Box<dyn Error>> {
     run_command(Command::new("xl").arg("unpause").arg(containerid))?;
     Ok(())
 }
 
-pub fn stopguest(containerid: &str, _crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn stopguest(containerid: &str, _crundir: &Path) -> Result<(), Box<dyn Error>> {
     run_command(Command::new("xl").arg("pause").arg(containerid))?;
     Ok(())
 }
 
 //We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
-pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn destroyguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     run_command(Command::new("xl").arg("destroy").arg(containerid))?;
     // Disk stuff, no disk in arm
     // TODO: for x86_64, we need to remove the disk from the vg
@@ -99,7 +100,7 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     //writeln!(logfile, "lib.rs after destroy")?; //DEBUG
 
     // Now kill caronte
-    let pathtokill = std::fs::read_to_string(format!("{}/pidfile", crundir))?;
+    let pathtokill = std::fs::read_to_string(crundir.join("pidfile"))?;
     let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
     let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
@@ -117,11 +118,11 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
 // Create spawns a process, caronte, that is required to keep the container open. Caronte is set as
 // container init, and as long as containerd sees that is alive, the container is kept open
 pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
-    
+
     //log_timestamp("Create_Guest_Start")?; //Just for boot times timeline extraction
 
     // Read bundle and pidfile paths from the filesystem
-    let conffile = format!("{}/config.cfg", fc.crundir);
+    let conffile = fc.crundir.join("config.cfg");
 
     // Disk stuff, no disk in arm
     //TODO: for x86_64, we need to manage the disk
@@ -177,7 +178,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
     // Launch xl create asynchronously
     let mut xl_process = Command::new("xl")
         .arg("create")
-        .arg(conffile)
+        .arg(&conffile)
         .spawn()?;
 
     // Log immediately - this captures the moment the domain creation begins
@@ -202,14 +203,16 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
 }
 
 pub fn storeinfo(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
-    std::fs::write(format!("{}/bundle", fc.crundir), &fc.bundle)?;
-    std::fs::write(format!("{}/pidfile", fc.crundir), &fc.pidfile)?;
-    std::fs::write(format!("{}/OS", fc.crundir), &ic.os_var)?;
+    // bundle/pidfile are re-read with read_to_string by other commands and
+    // parsed as path strings, so persist them as text rather than raw OsStr bytes.
+    std::fs::write(fc.crundir.join("bundle"), fc.bundle.to_string_lossy().as_bytes())?;
+    std::fs::write(fc.crundir.join("pidfile"), fc.pidfile.to_string_lossy().as_bytes())?;
+    std::fs::write(fc.crundir.join("OS"), &ic.os_var)?;
     Ok(())
 }
 
 
-pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
+pub fn cleanup(_containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     fs::remove_dir_all(crundir).ok();
     Ok(())
 }

@@ -41,10 +41,10 @@ const CONFIG_FILE: &str = "platform_info.toml";
 pub struct BackendConfig {
     pub conf: String,
     pub cpus: u8,
-    pub conffile: String,
+    pub conffile: PathBuf,
     pub net: String,
     pub rpu_req: bool,
-    pub segments: Vec<String>,   
+    pub segments: Vec<String>,
     pub bdf: Vec<i8>,
     pub rcpus: Vec<i8>,
     pub used_rcpus: Vec<i8>,
@@ -62,10 +62,10 @@ impl BackendConfig {
         Self {
             conf: String::new(),
             cpus: 0,
-            conffile: String::new(),
+            conffile: PathBuf::new(),
             net: String::new(),
             rpu_req: false,
-            segments: Vec::new(),  
+            segments: Vec::new(),
             bdf: Vec::new(),
             rcpus: Vec::new(),
             used_rcpus: Vec::new(),
@@ -80,13 +80,13 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let start = timer::capture(); //TIMELINE
 
     let mut c = BackendConfig::new();
-    c.conffile = format!("{}/config{}.conf", fc.crundir, fc.containerid);
+    c.conffile = fc.crundir.join(format!("config{}.conf", fc.containerid));
 
     // parsing configuration variables from the file
     //THIS IS THE ACCESS TO JSON.CONFIG FROM DOCKER
     logging::log_message(logging::Level::Debug, format!("Reading the config.json inside the container for id {}", &fc.containerid).as_str());
     let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint)?);
-    logging::log_message(logging::Level::Debug, format!("The mountpoint for the container with id {} is {}", &fc.containerid, &fc.mountpoint).as_str());
+    logging::log_message(logging::Level::Debug, format!("The mountpoint for the container with id {} is {}", &fc.containerid, fc.mountpoint.display()).as_str());
     //Clone the value of config.net (from the internal .json) to c.net
     c.net = config.net.clone();
 
@@ -207,9 +207,9 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     // If -t flag was specified, call COMMUNICATION backend for further processing
     // E.G. allocate terminal or ssh shell
 
-    if !fc.guestconsole.is_empty() {
-        let mut file = fs::File::create(format!("{}/console", fc.crundir))?;
-        writeln!(file, "{}", fc.guestconsole)?;
+    if !fc.guestconsole.as_os_str().is_empty() {
+        let mut file = fs::File::create(fc.crundir.join("console"))?;
+        writeln!(file, "{}", fc.guestconsole.display())?;
     }
 
     //let _ = communication::communicationconfig(&mut c); //communication è stato incluso direttamente nel preamble
@@ -331,9 +331,9 @@ fn confighelperend(
     //std::fs::write(&c.conffile, &c.conf)?;
 
     // Define paths in fc.crundir, with the correct naming convention
-    let path_to_compile = Path::new(&fc.crundir).join("tocompile.c");
-    let cell_file_path = Path::new(&fc.crundir).join(format!("{}.cell", fc.containerid));
-    let obj_file_path = Path::new(&fc.crundir).join(format!("{}.o", fc.containerid));
+    let path_to_compile = fc.crundir.join("tocompile.c");
+    let cell_file_path = fc.crundir.join(format!("{}.cell", fc.containerid));
+    let obj_file_path = fc.crundir.join(format!("{}.o", fc.containerid));
 
     // Write the config to tocompile.c in fc.crundir
     std::fs::write(&path_to_compile, &c.conf)?;
