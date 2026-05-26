@@ -286,7 +286,7 @@ checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
 
 [[package]]
 name = "liboci-cli"
-version = "0.3.2"
+version = "0.5.5"
 dependencies = [
  "clap",
 ]
@@ -452,7 +452,7 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "runphi"
-version = "0.5.7"
+version = "0.5.8"
 dependencies = [
  "backend_jailhouse",
  "backend_xen",

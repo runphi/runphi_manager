@@ -1,6 +1,7 @@
 //! Handles the creation of a new container
-use clap::Parser;
 use std::path::PathBuf;
+
+use clap::Parser;
 
 /// Create a container
 /// Reference: https://github.com/opencontainers/runc/blob/main/man/runc-create.8.md
@@ -10,7 +11,7 @@ pub struct Create {
     #[clap(short, long, default_value = ".")]
     pub bundle: PathBuf,
     /// Unix socket (file) path , which will receive file descriptor of the writing end of the pseudoterminal
-    #[clap(short, long, default_value = ".")]
+    #[clap(short, long)]
     pub console_socket: Option<PathBuf>,
     /// File to write pid of the container created
     // note that in the end, container is just another process

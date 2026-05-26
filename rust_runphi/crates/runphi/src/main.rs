@@ -28,13 +28,13 @@ compile_error!("Select a backend: --features jailhouse or --features xen");
 compile_error!("Backends jailhouse and xen are mutually exclusive");
 
 // Version string surfaces the active backend so `runphi --version`
-// reports which hypervisor it was built for. The leading "0.5.7" stays
+// reports which hypervisor it was built for. The leading version stays
 // as the first version token so existing scripts that awk field 2
 // (get_current_container_runtime.sh) keep working.
 #[cfg(feature = "jailhouse")]
-const VERSION_STR: &str = "0.5.7 (backend: jailhouse)";
+const VERSION_STR: &str = "0.5.8 (backend: jailhouse)";
 #[cfg(feature = "xen")]
-const VERSION_STR: &str = "0.5.7 (backend: xen)";
+const VERSION_STR: &str = "0.5.8 (backend: xen)";
 
 // High-level commandline option definition
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
