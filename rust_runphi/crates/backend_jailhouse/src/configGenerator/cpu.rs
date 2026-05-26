@@ -19,7 +19,7 @@ use f2b;
 
 pub fn cpuconf(
     _fc: &f2b::FrontendConfig,
-    c: &mut configGenerator::Backendconfig,
+    c: &mut configGenerator::BackendConfig,
     _quota: &f64,
     _period: &f64,
     cpusf64: &f64,

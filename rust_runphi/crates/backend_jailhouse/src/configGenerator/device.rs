@@ -18,7 +18,7 @@ use crate::configGenerator::templates::*;
 
 use f2b::paths::WORKPATH;
 
-pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn Error>> {
+pub fn devconfig(c: &mut configGenerator::BackendConfig) -> Result<(), Box<dyn Error>> {
 
     // Insert line into the config file
     let pattern = r"struct jailhouse_memory mem_regions\[\d+\];";

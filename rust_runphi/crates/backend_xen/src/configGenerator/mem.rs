@@ -9,7 +9,7 @@ use std::str;
 use crate::configGenerator;
 
 pub fn memconf(
-    c: &mut configGenerator::Backendconfig,
+    c: &mut configGenerator::BackendConfig,
     storage_request: &u64,
     ram_request: &u64,
     group_name : &str

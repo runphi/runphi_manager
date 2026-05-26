@@ -18,7 +18,7 @@ use crate::configGenerator;
 //const RUNDIR: &str = "/run/runPHI";
 
 pub fn rpuconf(
-    c: &mut configGenerator::Backendconfig,
+    c: &mut configGenerator::BackendConfig,
     rpusf64: &f64,
 ) -> Result<(), Box<dyn Error>> {
     // cpus will be the effective number of RPUs requested

@@ -214,7 +214,7 @@ pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
-// pub fn storeadditionalinfo(c: &mut Backendconfig) -> Result<(), Box<dyn Error>> {
+// pub fn storeadditionalinfo(c: &mut BackendConfig) -> Result<(), Box<dyn Error>> {
 //     if !c.dtb.is_empty() {
 //         let mut file = fs::File::create(format!("{}/dtb", c.crundir)).expect("Failed to create dtb file");
 //         writeln!(file, "{}", c.dtb).expect("Failed to write dtb path");

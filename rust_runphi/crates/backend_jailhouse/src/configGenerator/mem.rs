@@ -145,7 +145,7 @@ fn generate_config(
 
 
 pub fn memconfig(
-    c: &mut configGenerator::Backendconfig,
+    c: &mut configGenerator::BackendConfig,
     mem_request_hex: &str,
 ) -> Result<(), Box<dyn Error>> {
     let file_path = Path::new(WORKPATH).join("platform_info.toml");

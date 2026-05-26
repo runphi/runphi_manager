@@ -24,20 +24,20 @@ const LVM_GROUP_NAME: &str = "test-vg";
 // There is the configuration file, the configuration string, and needed variables for resources,
 // like cpus, memory addresses, devices, and in general all the output of the configGeneration phase
 #[derive(Debug)]
-pub struct Backendconfig {
+pub struct BackendConfig {
     pub conf: String,
     pub cpus: u8,
     pub conffile: String,
     pub net: String,
 }
 
-impl Default for Backendconfig {
+impl Default for BackendConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Backendconfig {
+impl BackendConfig {
     // Constructor function
     pub fn new() -> Self {
         Self {
@@ -58,7 +58,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _ = logging::timer::log_phase("Config_Gen_Start");
 
     logging::log_message(logging::Level::Info,  "starting config generator".to_string().as_str());
-    let mut c = Backendconfig::new();
+    let mut c = BackendConfig::new();
     c.conffile = format!("{}/config.cfg", fc.crundir);
     logging::log_message(logging::Level::Debug,  format!("Target file path : {}", c.conffile).as_str());
 
@@ -165,7 +165,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
 fn confighelperstart(
     fc: &f2b::FrontendConfig,
-    c: &mut Backendconfig,
+    c: &mut BackendConfig,
     _ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
 
@@ -182,7 +182,7 @@ name = \"{}\" \n"
 
 fn confighelperend(
     _fc: &f2b::FrontendConfig,
-    c: &mut Backendconfig,
+    c: &mut BackendConfig,
     _ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
 

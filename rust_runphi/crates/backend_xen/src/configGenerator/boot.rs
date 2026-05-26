@@ -12,7 +12,7 @@ use crate::configGenerator;
 //TODO: replace multiple panics of this function with something more informative
 pub fn bootconf(
     _fc: &f2b::FrontendConfig, 
-    c: &mut configGenerator::Backendconfig, 
+    c: &mut configGenerator::BackendConfig, 
     ic: &mut f2b::ImageConfig) {
 
     let _nonrootdefaultpath = "/root/runPHI/demo_containers";

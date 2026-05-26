@@ -38,7 +38,7 @@ const CONFIG_FILE: &str = "platform_info.toml";
 // There is the configuration file, the configuration string, and needed variables for resources,
 // like cpus, memory addresses, devices, and in general all the output of the configGeneration phase
 #[derive(Debug)]
-pub struct Backendconfig {
+pub struct BackendConfig {
     pub conf: String,
     pub cpus: u8,
     pub conffile: String,
@@ -50,13 +50,13 @@ pub struct Backendconfig {
     pub used_rcpus: Vec<i8>,
 }
 
-impl Default for Backendconfig {
+impl Default for BackendConfig {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Backendconfig {
+impl BackendConfig {
     // Constructor function
     pub fn new() -> Self {
         Self {
@@ -79,7 +79,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     //let start = timer::capture(); //TIMELINE
 
-    let mut c = Backendconfig::new();
+    let mut c = BackendConfig::new();
     c.conffile = format!("{}/config{}.conf", fc.crundir, fc.containerid);
 
     // parsing configuration variables from the file
@@ -246,7 +246,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
 fn confighelperstart(
     fc: &f2b::FrontendConfig,
-    c: &mut Backendconfig,
+    c: &mut BackendConfig,
     ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
     // Write the conf file preamble
@@ -316,7 +316,7 @@ fn confighelperstart(
 
 fn confighelperend(
     fc: &f2b::FrontendConfig,
-    c: &mut Backendconfig,
+    c: &mut BackendConfig,
     _ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
     
