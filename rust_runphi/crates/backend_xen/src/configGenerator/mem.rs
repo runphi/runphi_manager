@@ -15,12 +15,9 @@ pub fn memconf(
     group_name : &str
 ) -> Result<(), Box<dyn Error>> {
 
-    let output = Command::new("xl")
-    .arg("info")
-    .output()
-    .expect("Failed to execute xl info");
+    let output = Command::new("xl").arg("info").output()?;
 
-    let stdout = str::from_utf8(&output.stdout).expect("Invalid UTF-8 in xl info output");
+    let stdout = str::from_utf8(&output.stdout)?;
 
     let mut vfree_mb: Option<u64> = None;
 

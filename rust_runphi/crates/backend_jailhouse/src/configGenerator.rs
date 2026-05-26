@@ -188,7 +188,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Device Configuration")?;
 
-    let _ = boot::bootconfbackend(fc, &mut config);
+    boot::bootconfbackend(fc, &mut config)?;
 
     //TODO: call net config here (take net memory areas from memory)
 
@@ -202,9 +202,8 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     // E.G. allocate terminal or ssh shell
 
     if !fc.guestconsole.is_empty() {
-        let mut file = fs::File::create(format!("{}/console", fc.crundir))
-            .expect("Failed to create console file");
-        writeln!(file, "{}", fc.guestconsole).expect("Failed to write console file");
+        let mut file = fs::File::create(format!("{}/console", fc.crundir))?;
+        writeln!(file, "{}", fc.guestconsole)?;
     }
 
     //let _ = communication::communicationconfig(&mut c); //communication è stato incluso direttamente nel preamble
@@ -454,16 +453,16 @@ fn save_state(
         let (start_before, _end_before) = {
             let parts: Vec<&str> = segments_before[0].split(", ").collect();
             (
-                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).expect("Invalid start address"),
-                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16).expect("Invalid end address"),
+                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16)?,
+                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)?,
             )
         };
 
         let (start_after, _end_after) = {
             let parts: Vec<&str> = c_segments[0].split(", ").collect();
             (
-                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).expect("Invalid start address"),
-                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16).expect("Invalid end address"),
+                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16)?,
+                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)?,
             )
         };
 

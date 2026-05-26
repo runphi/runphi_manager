@@ -23,16 +23,18 @@ pub fn cpuconf(
     //Take the info about free CPUs
 
     //Take the info about all the pCPUs
-    let lscpu_output = Command::new("lscpu")
-    .output()
-    .expect("Errore durante l'esecuzione del comando lscpu");
-    
+    let lscpu_output = Command::new("lscpu").output()?;
+
     if lscpu_output.status.success() {
         let stdout = String::from_utf8_lossy(&lscpu_output.stdout);
 
         for line in stdout.lines() {
             if line.starts_with("CPU(s):") {
-                let cpus: i64 = line.split_whitespace().nth(1).unwrap().parse().expect("Failed to parse cpu value");
+                let cpus_str = line
+                    .split_whitespace()
+                    .nth(1)
+                    .ok_or_else(|| format!("malformed lscpu line: {}", line))?;
+                let cpus: i64 = cpus_str.parse()?;
                 tot_cpus.extend(0..cpus);
                 break;
             }
@@ -44,9 +46,8 @@ pub fn cpuconf(
 
     //take the info about the already pinned
     let output = Command::new("xl")
-        .arg("vcpu-list")  
-        .output()   
-        .expect("Error during xl execution");
+        .arg("vcpu-list")
+        .output()?;
 
 
     // Name                                ID  VCPU   CPU State   Time(s) Affinity (Hard / Soft)

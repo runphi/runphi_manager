@@ -134,9 +134,8 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //------------------------------------------------------------------------------------
 
     if !fc.guestconsole.is_empty() {
-        let mut file = fs::File::create(format!("{}/console", fc.crundir))
-            .expect("Failed to create console file");
-        writeln!(file, "{}", fc.guestconsole).expect("Failed to write console file");
+        let mut file = fs::File::create(format!("{}/console", fc.crundir))?;
+        writeln!(file, "{}", fc.guestconsole)?;
     }
 
 
