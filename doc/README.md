@@ -121,3 +121,20 @@ state   → same forwarding check  →  read bundle/pidfile/rootfs from /run/run
 - Timer trait: [rust_runphi/crates/logging/src/timer.rs](../rust_runphi/crates/logging/src/timer.rs)
 - Jailhouse backend: [rust_runphi/crates/backend_jailhouse/src/lib.rs](../rust_runphi/crates/backend_jailhouse/src/lib.rs)
 - Xen backend: [rust_runphi/crates/backend_xen/src/lib.rs](../rust_runphi/crates/backend_xen/src/lib.rs)
+
+## Historical references
+
+An earlier version of the codebase carried a `runphi/src/unused/` tree
+with three groups of dead scaffolding never wired into the build:
+
+- `workload/` — wasmtime / wasmer / wasmedge integration sketches for
+  running WASM workloads as the in-container payload.
+- `commands/` — per-OCI-command stubs (`create`, `start`, `kill`, ...)
+  in the youki/runc-style of one file per command, before the current
+  consolidated dispatch in `runphi/src/main.rs`.
+- `observability.rs`, `rootpath.rs` — standalone helper modules.
+
+These files were removed to keep the active source tree small. They
+are recoverable from git history if anyone wants to revive the WASM
+workload work or use the per-command layout as a starting point for
+new OCI command implementations.
