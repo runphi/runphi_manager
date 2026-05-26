@@ -14,11 +14,34 @@ use std::fs;
 use liboci_cli::{GlobalOpts, StandardCmd};
 use logging;
 
+// Backend selection. Exactly one of the `jailhouse` / `xen` Cargo
+// features must be enabled at build time; the selected backend crate
+// is re-exported under the unified name `backend` for the rest of
+// runphi (and its submodules) to use.
+#[cfg(feature = "jailhouse")]
+pub use backend_jailhouse as backend;
+#[cfg(feature = "xen")]
+pub use backend_xen as backend;
+
+#[cfg(not(any(feature = "jailhouse", feature = "xen")))]
+compile_error!("Select a backend: --features jailhouse or --features xen");
+#[cfg(all(feature = "jailhouse", feature = "xen"))]
+compile_error!("Backends jailhouse and xen are mutually exclusive");
+
+// Version string surfaces the active backend so `runphi --version`
+// reports which hypervisor it was built for. The leading "0.5.7" stays
+// as the first version token so existing scripts that awk field 2
+// (get_current_container_runtime.sh) keep working.
+#[cfg(feature = "jailhouse")]
+const VERSION_STR: &str = "0.5.7 (backend: jailhouse)";
+#[cfg(feature = "xen")]
+const VERSION_STR: &str = "0.5.7 (backend: xen)";
+
 // High-level commandline option definition
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)
 // Also check [runc commandline documentation](https://github.com/opencontainers/runc/blob/master/man/runc.8.md) for more explanation
 #[derive(Parser, Debug)]
-#[clap(version = "0.5.7", author = env!("CARGO_PKG_AUTHORS"))]
+#[clap(version = VERSION_STR, author = env!("CARGO_PKG_AUTHORS"))]
 struct Opts {
     #[clap(flatten)]
     global: GlobalOpts,

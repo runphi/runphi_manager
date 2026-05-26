@@ -455,6 +455,7 @@ name = "runphi"
 version = "0.5.7"
 dependencies = [
  "backend_jailhouse",
+ "backend_xen",
  "chrono",
  "clap",
  "f2b",
