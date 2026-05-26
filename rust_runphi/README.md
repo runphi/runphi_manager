@@ -3,7 +3,19 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ## install crosscompiler
 apt install gcc-aarch64-linux-gnu 
 ## To build
-cargo build --release --target=aarch64-unknown-linux-gnu
+Pick the hypervisor backend at build time via a Cargo feature (`jailhouse` is the default):
+
+    # Jailhouse (default)
+    cargo build --release --target=aarch64-unknown-linux-gnu
+
+    # Xen
+    cargo build --release --target=aarch64-unknown-linux-gnu -p runphi \
+        --no-default-features --features xen
+
+Or use the wrapper script from the repo root:
+
+    ./compile_rust.sh             # jailhouse
+    ./compile_rust.sh xen
 ## Adding support for a new target board
 To add support for a new board in the config generator you need to know how a standard jailhouse configuration for that board is done. In the module templates.rs are available various templates for the preamble, the memory regions, the interrupt request chip and the pci devices. 
 Here is an example for a memory region mapping an UART device.
