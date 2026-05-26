@@ -5,6 +5,7 @@
 
 use serde::Deserialize;
 use serde_json;
+use std::error::Error;
 use std::fs;
 
 // This structure holds all the information mapped from the cli
@@ -90,20 +91,20 @@ pub struct ImageConfig {
     // TODO: handle default or missing values in a decent way
 }
 impl ImageConfig {
-    pub fn get_from_file(mountpoint: &str) -> Self {
+    pub fn get_from_file(mountpoint: &str) -> Result<Self, Box<dyn Error>> {
         // parsing configuration variables from the file
         //TODO: here is the case to parse also a node default used in the case the container does not specify this
         //TODO: parametrize boot boot.bin and config.json
-        let json_str = match fs::read_to_string(format!("{}/boot/config.json", mountpoint)) {
-            Ok(content) => content,
-            Err(_) => String::new(),
-        };
-        let mut config: ImageConfig = serde_json::from_str(&json_str).unwrap();
+        let path = format!("{}/boot/config.json", mountpoint);
+        let json_str = fs::read_to_string(&path)
+            .map_err(|e| format!("cannot read runPHI boot config {}: {}", path, e))?;
+        let mut config: ImageConfig = serde_json::from_str(&json_str)
+            .map_err(|e| format!("malformed runPHI boot config {}: {}", path, e))?;
         if !config.inmate.is_empty() {
             config.inmate = format!("{}{}", mountpoint, config.inmate).trim().to_string();
         } else {
             config.inmate = format!("{}/boot/boot.bin", mountpoint);
         }
-        return config;
+        Ok(config)
     }
 }

@@ -10,7 +10,7 @@ use std::fs::{self};
 use std::os::unix::fs::symlink;
 //use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
 use std::str;
 use toml::Value;
 //use std::time::Instant; //TIME CLOCK MONOTONIC
@@ -21,6 +21,37 @@ use logging;
 #[allow(non_snake_case)]
 pub mod configGenerator;
 pub mod timer;
+
+// Run an external command and return Err if it can't be spawned or
+// exits non-zero. Replaces the .output().expect("Failed to execute
+// command") pattern: the previous form panicked the entire runphi
+// process on spawn failure and silently ignored non-zero exits.
+fn run_command(cmd: &mut Command) -> Result<Output, Box<dyn Error>> {
+    let prog = cmd.get_program().to_string_lossy().into_owned();
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to spawn {}: {}", prog, e))?;
+    logging::log_message(
+        logging::Level::Trace,
+        &format!(
+            "{} exited {:?}, stdout={:?}, stderr={:?}",
+            prog,
+            out.status,
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        ),
+    );
+    if !out.status.success() {
+        return Err(format!(
+            "{} failed (exit {}): {}",
+            prog,
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stderr).trim(),
+        )
+        .into());
+    }
+    Ok(out)
+}
 
 const WORKPATH: &str = "/usr/share/runPHI";
 //const RUNDIR: &str = "/run/runPHI";
@@ -188,8 +219,7 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
             .arg("cell")
             .arg("start")
             .arg(containerid)
-            .spawn()
-            .expect("Failed to spawn jailhouse cell start");
+            .spawn()?;
 
         // Log immediately - this captures the moment the cell creation begins
         //let end = timer::capture();
@@ -197,7 +227,7 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
         //timer::log_phase_at(end, "Cell started")?;  // Uses the same end timestamp
 
         // Wait for jailhouse cell start to finish
-        let _ = start_process.wait().expect("Failed to wait for jailhouse cell start");
+        start_process.wait()?;
     }
     
     return Ok(());
@@ -209,16 +239,16 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
 
     let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "shutdown", containerid);
     logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
-    let _ = Command::new(JAILHOUSE_PATH)
-        .arg("cell")
-        .arg("shutdown")
-        .arg(containerid)
-        .output()
-        .expect("Failed to execute command");
+    run_command(
+        Command::new(JAILHOUSE_PATH)
+            .arg("cell")
+            .arg("shutdown")
+            .arg(containerid),
+    )?;
     // Now kill caronte
     let pathtokill = std::fs::read_to_string(format!("{}/pidfile", crundir))?;
     let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
-    let pidk: i32 = pidtokill.parse().expect("Failed to parse number");
+    let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
 
@@ -239,17 +269,17 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     // Execute the command to destroy the jailhouse cell using the name of the cell containerid
     let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "destroy", containerid);
     logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
-    let _ = Command::new(JAILHOUSE_PATH)
-        .arg("cell")
-        .arg("destroy")
-        .arg(containerid)
-        .output()
-        .expect("Failed to execute command");
+    run_command(
+        Command::new(JAILHOUSE_PATH)
+            .arg("cell")
+            .arg("destroy")
+            .arg(containerid),
+    )?;
 
     // Now kill caronte
     let pathtokill = std::fs::read_to_string(format!("{}/pidfile", crundir))?;
     let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
-    let pidk: i32 = pidtokill.parse().expect("Failed to parse number");
+    let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
     fs::remove_dir_all(&crundir).ok();
@@ -390,7 +420,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             .arg(&fc.containerid)
             .spawn()?;
         let pid = start_output.id();
-        std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");        
+        std::fs::write(&fc.pidfile, format!("{}", pid))?;        
     
     } else if ic.os_var == "linux" {
         // Here we manage separately the (unlikely) linux case due to a dedicated jh command
@@ -405,7 +435,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                     .arg(&fc.containerid)
                     .spawn()?;
         let pid = start_output.id();
-        std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
+        std::fs::write(&fc.pidfile, format!("{}", pid))?;
     }
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Cell creation")?;

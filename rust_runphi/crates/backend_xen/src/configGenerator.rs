@@ -59,7 +59,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     // parsing configuration variables from the file
     //THIS IS THE ACCESS TO JSON.CONFIG FROM DOCKER
     //writeln!(logfile, "Parsing config.json")?;                        //DEBUG
-    let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint));
+    let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint)?);
 
     
 

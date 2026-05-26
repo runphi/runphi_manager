@@ -12,7 +12,6 @@ use std::error::Error;
 use std::fs;
 
 use liboci_cli::{GlobalOpts, StandardCmd};
-use logging;
 
 // Backend selection. Exactly one of the `jailhouse` / `xen` Cargo
 // features must be enabled at build time; the selected backend crate
@@ -91,15 +90,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     //timer::log_phase("runPHI main started")?; //To log the time of runphi start
 
-    //TODO: if no backend is available at the moment, forward to runc
-
     let containerid;
     let opts = Opts::parse();
     //let _app = Opts::command();
 
-
-
-    let _ = match opts.subcmd {
+    match opts.subcmd {
         SubCommand::Standard(cmd) => match *cmd {
             // We here distinguish the behaviour by command defined as OCI spec
             // Common to all commands, take the first 24 chars to get the containerID
@@ -129,21 +124,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                 //Create container directory to store runphi-related information
                 fs::create_dir_all(&crundir)?;
 
-                let _ = frontend::commands::create(&containerid, create, &crundir, config);
+                frontend::commands::create(&containerid, create, &crundir, config)?;
             }
             StandardCmd::Start(start) => {
                 containerid = start.container_id.chars().take(24).collect::<String>();
                 forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
                 logging::log_message(logging::Level::Info,  format!("Starting with id {}", &containerid).as_str());
                 let crundir = format!("{}/{}", RUNDIR, containerid);
-                let _ = frontend::commands::start(&containerid, &crundir);
+                frontend::commands::start(&containerid, &crundir)?;
             }
             StandardCmd::Kill(kill) => {
                 containerid = kill.container_id.chars().take(24).collect::<String>();
                 forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
                 logging::log_message(logging::Level::Info,  format!("Killing with id {}", &containerid).as_str());
                 let crundir = format!("{}/{}", RUNDIR, containerid);
-                let _ = frontend::commands::kill(&containerid, &crundir);
+                frontend::commands::kill(&containerid, &crundir)?;
             }
 
             StandardCmd::Delete(delete) => {
@@ -151,7 +146,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
                 logging::log_message(logging::Level::Info,  format!("Deleting with id {}", &containerid).as_str());
                 let crundir = format!("{}/{}", RUNDIR, containerid);
-                let _ = frontend::commands::delete(&containerid, &crundir);
+                frontend::commands::delete(&containerid, &crundir)?;
             }
 
             StandardCmd::State(state) => {
@@ -159,7 +154,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
                 logging::log_message(logging::Level::Info,  format!("State with id {}", &containerid).as_str());
                 let crundir = format!("{}/{}", RUNDIR, containerid);
-                let _ = frontend::commands::state(&containerid, &crundir);
+                frontend::commands::state(&containerid, &crundir)?;
             }
         },
         SubCommand::Common(_) => {} /* Unimplemented yet

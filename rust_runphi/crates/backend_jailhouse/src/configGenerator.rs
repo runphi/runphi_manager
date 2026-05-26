@@ -79,7 +79,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     // parsing configuration variables from the file
     //THIS IS THE ACCESS TO JSON.CONFIG FROM DOCKER
     logging::log_message(logging::Level::Debug, format!("Reading the config.json inside the container for id {}", &fc.containerid).as_str());
-    let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint));
+    let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint)?);
     logging::log_message(logging::Level::Debug, format!("The mountpoint for the container with id {} is {}", &fc.containerid, &fc.mountpoint).as_str());
     //Clone the value of config.net (from the internal .json) to c.net
     c.net = config.net.clone();

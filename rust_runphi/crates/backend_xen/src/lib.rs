@@ -7,7 +7,7 @@ use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use std::error::Error;
 use std::fs::{self, OpenOptions};
-use std::process::Command;
+use std::process::{Command, Output};
 use std::str;
 //use std::fs::OpenOptions;
 use std::io::Write;
@@ -19,40 +19,54 @@ use f2b;
 pub mod configGenerator;
 pub mod timer;
 
+// Run an external command and return Err if it can't be spawned or
+// exits non-zero. Replaces the .output().expect("Failed to execute
+// command") pattern: the previous form panicked the entire runphi
+// process on spawn failure and silently ignored non-zero exits.
+fn run_command(cmd: &mut Command) -> Result<Output, Box<dyn Error>> {
+    let prog = cmd.get_program().to_string_lossy().into_owned();
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to spawn {}: {}", prog, e))?;
+    logging::log_message(
+        logging::Level::Trace,
+        &format!(
+            "{} exited {:?}, stdout={:?}, stderr={:?}",
+            prog,
+            out.status,
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        ),
+    );
+    if !out.status.success() {
+        return Err(format!(
+            "{} failed (exit {}): {}",
+            prog,
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stderr).trim(),
+        )
+        .into());
+    }
+    Ok(out)
+}
+
 //const WORKPATH: &str = "/usr/share/runPHI";
 
 
 pub fn startguest(containerid: &str, _crundir: &str) -> Result<(), Box<dyn Error>> {
-
-    let _ = Command::new("xl")
-        .arg("unpause")
-        .arg(containerid)
-        .output()
-        .expect("Failed to execute command");
-    
-    return Ok(());
+    run_command(Command::new("xl").arg("unpause").arg(containerid))?;
+    Ok(())
 }
 
 pub fn stopguest(containerid: &str, _crundir: &str) -> Result<(), Box<dyn Error>> {
-    //let start_time = Instant::now();                                //TIME
-    let _ =Command::new("xl")
-        .arg("pause")
-        .arg(containerid)
-        .output()
-        .expect("Failed to execute command");
-
-    return Ok(());
+    run_command(Command::new("xl").arg("pause").arg(containerid))?;
+    Ok(())
 }
 
 //We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
-
-    let _ = Command::new("xl")
-        .arg("destroy")
-        .arg(containerid)
-        .output()
-        .expect("Failed to execute command");
+    run_command(Command::new("xl").arg("destroy").arg(containerid))?;
     // Disk stuff, no disk in arm
     // TODO: for x86_64, we need to remove the disk from the vg
     // Construct the file path
@@ -87,7 +101,7 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     // Now kill caronte
     let pathtokill = std::fs::read_to_string(format!("{}/pidfile", crundir))?;
     let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
-    let pidk: i32 = pidtokill.parse().expect("Failed to parse number");
+    let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
     fs::remove_dir_all(&crundir).ok();
@@ -164,14 +178,13 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
     let mut xl_process = Command::new("xl")
         .arg("create")
         .arg(conffile)
-        .spawn()
-        .expect("Failed to spawn xl create");
+        .spawn()?;
 
     // Log immediately - this captures the moment the domain creation begins
     //log_timestamp("Create_Guest_End")?;
 
     // Wait for xl create to finish
-    let _ = xl_process.wait().expect("Failed to wait for xl create");
+    xl_process.wait()?;
 
     let command = format!("echo \"caronte is listening\"");
 
@@ -181,7 +194,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
         .spawn()?;
     let pid = start_output.id();
 
-    std::fs::write(&fc.pidfile, format!("{}", pid)).expect("Unable to write pidfile");
+    std::fs::write(&fc.pidfile, format!("{}", pid))?;
 
     //log_timestamp("Create_Guest_End")?; //Just for boot times timeline extraction
 
