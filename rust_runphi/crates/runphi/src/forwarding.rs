@@ -6,21 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-// Vanilla runc binary used when a container is not managed by runPHI.
-// /usr/local/sbin is the FHS slot for locally-installed system-administration
-// binaries invoked by daemons (containerd/dockerd run as root); it avoids
-// clashing with the distro-managed /usr/bin/runc that switch_to_runphi.sh
-// backs up here.
-pub const RUNC_VANILLA_BIN: &str = "/usr/local/sbin/runc_vanilla";
-
-// Per-container state directory created by runPHI on `create`. The presence
-// of this directory is the source of truth for whether a container is
-// runPHI-managed for OCI commands other than `create`.
-pub const RUNPHI_STATE_DIR: &str = "/run/runPHI";
-
-// File inside the container rootfs that marks the image as runPHI-managed.
-// Same file parsed by frontend_to_backend::ImageConfig::get_from_file.
-const RUNPHI_BOOT_CONFIG_REL: &str = "boot/config.json";
+use f2b::paths;
 
 // OCI annotation that explicitly selects the low-level runtime, overriding
 // auto-detection. Recognized values: "runphi" or "runc".
@@ -70,7 +56,7 @@ pub fn decide_create(config: &serde_json::Value, bundle: &Path) -> ForwardDecisi
 // Decide whether an OCI command other than `create` must be forwarded.
 // A container is runPHI-managed iff its state directory still exists.
 pub fn decide_existing(containerid: &str) -> ForwardDecision {
-    if Path::new(RUNPHI_STATE_DIR).join(containerid).exists() {
+    if Path::new(paths::STATE_DIR).join(containerid).exists() {
         ForwardDecision::UseRunphi
     } else {
         ForwardDecision::ForwardToRunc
@@ -85,12 +71,12 @@ pub fn call_runc() -> i32 {
         logging::Level::Trace,
         format!(
             "Redirecting to runc: {} {}",
-            RUNC_VANILLA_BIN,
+            paths::RUNC_VANILLA_BIN,
             forwarded_args.join(" ")
         )
         .as_str(),
     );
-    let mut runccmd = Command::new(RUNC_VANILLA_BIN);
+    let mut runccmd = Command::new(paths::RUNC_VANILLA_BIN);
     for arg in &forwarded_args {
         runccmd.arg(arg);
     }
@@ -99,7 +85,7 @@ pub fn call_runc() -> i32 {
         Err(e) => {
             logging::log_message(
                 logging::Level::Error,
-                format!("Failed to exec {}: {}", RUNC_VANILLA_BIN, e).as_str(),
+                format!("Failed to exec {}: {}", paths::RUNC_VANILLA_BIN, e).as_str(),
             );
             1
         }
@@ -121,5 +107,5 @@ fn rootfs_has_runphi_boot_config(config: &serde_json::Value, bundle: &Path) -> b
         bundle.join(rootfs)
     };
 
-    rootfs_path.join(RUNPHI_BOOT_CONFIG_REL).exists()
+    rootfs_path.join(paths::BOOT_CONFIG_REL).exists()
 }

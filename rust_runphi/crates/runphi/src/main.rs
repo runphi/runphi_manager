@@ -64,11 +64,10 @@ mod frontend {
 }
 mod forwarding;
 
+use f2b::paths;
 use forwarding::ForwardDecision;
 
 //TODO: convert strings to Path and PathBuf
-//const WORKPATH: &str = "/usr/share/runPHI";
-const RUNDIR: &str = forwarding::RUNPHI_STATE_DIR;
 
 // Forward to runc and exit with its status, or continue with runPHI based on `decision`.
 fn forward_or_continue(decision: ForwardDecision, containerid: &str) {
@@ -81,33 +80,52 @@ fn forward_or_continue(decision: ForwardDecision, containerid: &str) {
     }
 }
 
+// Container IDs are truncated to 24 chars because hypervisors like
+// Jailhouse may fail with a partition name longer than that.
+fn truncate_id(raw: &str) -> String {
+    raw.chars().take(24).collect()
+}
+
+// Boilerplate shared by Start / Kill / Delete / State: truncate the
+// container ID, decide whether to forward to runc (and exit if so),
+// log the action, and build the per-container state directory path.
+fn dispatch_existing(raw_id: &str, verb: &str) -> (String, String) {
+    let containerid = truncate_id(raw_id);
+    forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
+    logging::log_message(
+        logging::Level::Info,
+        format!("{} with id {}", verb, &containerid).as_str(),
+    );
+    let crundir = format!("{}/{}", paths::STATE_DIR, containerid);
+    (containerid, crundir)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize the logging and timer modules
-    logging::init_logger(Some(std::path::PathBuf::from(std::path::Path::new("/usr/share/runPHI/log.txt"))));//opts.global.log);
+    logging::init_logger(Some(std::path::PathBuf::from(logging::LOG_PATH)));//opts.global.log);
     backend::timer::install()?;
 
     //timer::log_phase("runPHI main started")?; //To log the time of runphi start
 
-    let containerid;
     let opts = Opts::parse();
     //let _app = Opts::command();
 
     match opts.subcmd {
         SubCommand::Standard(cmd) => match *cmd {
-            // We here distinguish the behaviour by command defined as OCI spec
-            // Common to all commands, take the first 24 chars to get the containerID
-            // RunPHI restricts the ID to 24 chars because hypervisors like Jailhouse may fail with
-            // a partition of a longer name
-            // After collecting the ID, we have to check if we need to forward to runc because container
-            // does not belong to RunPHI management cycle.
-            //TODO: fix common part handling
+            // For each OCI command we (a) truncate the container ID to 24
+            // chars (Jailhouse limit), (b) decide whether to forward the
+            // call to vanilla runc, (c) log the action, and (d) build the
+            // per-container state directory path. dispatch_existing bundles
+            // (a-d) for everything except `create`, which has its own
+            // bootstrap flow because the state dir doesn't exist yet.
             StandardCmd::Create(create) => {
-                containerid = create.container_id.chars().take(24).collect::<String>();
-                logging::log_message(logging::Level::Debug,  "Parse json");
+                let containerid = truncate_id(&create.container_id);
+                logging::log_message(logging::Level::Debug, "Parse json");
                 let config_json = fs::read_to_string(format!(
                     "{}/config.json",
-                    &create.bundle.to_string_lossy().into_owned()))?;
+                    &create.bundle.to_string_lossy().into_owned(),
+                ))?;
                 let config: serde_json::Value = serde_json::from_str(&config_json)?;
 
                 forward_or_continue(
@@ -116,8 +134,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 );
 
                 // If we are here, there was no forwarding to runc, hence we start runphi management
-                logging::log_message(logging::Level::Info,  format!("Creating with id {}", &containerid).as_str());
-                let crundir = format!("{}/{}", RUNDIR, containerid);
+                logging::log_message(
+                    logging::Level::Info,
+                    format!("Creating with id {}", &containerid).as_str(),
+                );
+                let crundir = format!("{}/{}", paths::STATE_DIR, containerid);
                 //TODO: fix?, this should not exist
                 fs::remove_dir_all(&crundir).ok();
                 //Create container directory to store runphi-related information
@@ -126,33 +147,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                 frontend::commands::create(&containerid, create, &crundir, config)?;
             }
             StandardCmd::Start(start) => {
-                containerid = start.container_id.chars().take(24).collect::<String>();
-                forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
-                logging::log_message(logging::Level::Info,  format!("Starting with id {}", &containerid).as_str());
-                let crundir = format!("{}/{}", RUNDIR, containerid);
+                let (containerid, crundir) = dispatch_existing(&start.container_id, "Starting");
                 frontend::commands::start(&containerid, &crundir)?;
             }
             StandardCmd::Kill(kill) => {
-                containerid = kill.container_id.chars().take(24).collect::<String>();
-                forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
-                logging::log_message(logging::Level::Info,  format!("Killing with id {}", &containerid).as_str());
-                let crundir = format!("{}/{}", RUNDIR, containerid);
+                let (containerid, crundir) = dispatch_existing(&kill.container_id, "Killing");
                 frontend::commands::kill(&containerid, &crundir)?;
             }
-
             StandardCmd::Delete(delete) => {
-                containerid = delete.container_id.chars().take(24).collect::<String>();
-                forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
-                logging::log_message(logging::Level::Info,  format!("Deleting with id {}", &containerid).as_str());
-                let crundir = format!("{}/{}", RUNDIR, containerid);
+                let (containerid, crundir) = dispatch_existing(&delete.container_id, "Deleting");
                 frontend::commands::delete(&containerid, &crundir)?;
             }
-
             StandardCmd::State(state) => {
-                containerid = state.container_id.chars().take(24).collect::<String>();
-                forward_or_continue(forwarding::decide_existing(&containerid), &containerid);
-                logging::log_message(logging::Level::Info,  format!("State with id {}", &containerid).as_str());
-                let crundir = format!("{}/{}", RUNDIR, containerid);
+                let (containerid, crundir) = dispatch_existing(&state.container_id, "State");
                 frontend::commands::state(&containerid, &crundir)?;
             }
         },

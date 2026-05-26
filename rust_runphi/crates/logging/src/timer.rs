@@ -15,7 +15,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::sync::OnceLock;
 
-const LOG_PATH: &str = "/usr/share/runPHI/log.txt";
+use crate::LOG_PATH;
 
 // Backend-provided source of monotonic ticks.
 // Implementations must be cheap to call and safe to use from any thread.

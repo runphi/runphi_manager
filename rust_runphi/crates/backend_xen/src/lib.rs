@@ -14,6 +14,7 @@ use std::io::Write;
 //use std::time::Instant; //TIME CLOCK MONOTONIC
 
 use f2b;
+use f2b::paths::CARONTE_BIN;
 
 #[allow(non_snake_case)]
 pub mod configGenerator;
@@ -188,7 +189,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
 
     let command = format!("echo \"caronte is listening\"");
 
-    let start_output = Command::new("/usr/share/runPHI/caronte")
+    let start_output = Command::new(CARONTE_BIN)
         .arg(command)
         .arg(&fc.containerid)
         .spawn()?;

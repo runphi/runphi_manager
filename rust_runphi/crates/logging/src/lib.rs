@@ -15,6 +15,10 @@ pub use log::Level;
 
 pub mod timer;
 
+/// Default log file path. The timer module writes raw tick-stamped
+/// phase markers to the same file.
+pub const LOG_PATH: &str = "/usr/share/runPHI/log.txt";
+
 // Define the Logger struct
 #[derive(Debug)]
 pub struct Logger {
@@ -26,7 +30,7 @@ pub struct Logger {
 impl Logger {
     // Constructor accepts a log level and an optional path for the log file
     fn new(level: Level, path: Option<PathBuf>) -> Self {
-        let effective_path = path.unwrap_or_else(|| PathBuf::from("/usr/share/runPHI/log.txt"));
+        let effective_path = path.unwrap_or_else(|| PathBuf::from(LOG_PATH));
 
         let file = OpenOptions::new()
                 .create(true)

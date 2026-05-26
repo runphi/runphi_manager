@@ -53,10 +53,11 @@ fn run_command(cmd: &mut Command) -> Result<Output, Box<dyn Error>> {
     Ok(out)
 }
 
-const WORKPATH: &str = "/usr/share/runPHI";
-//const RUNDIR: &str = "/run/runPHI";
+use f2b::paths::{CARONTE_BIN, WORKPATH};
+
 const JAILHOUSE_PATH: &str = "/root/jailhouse/tools/jailhouse";
 const STATEFILE: &str = "state.toml";
+const FIRMWARE_DIR: &str = "/lib/firmware";
 
 // Reads the state file and returns the rcpus string for the given containerid.
 fn get_rcpu_for_container(containerid: &str) -> Result<String, Box<dyn Error>> {
@@ -332,7 +333,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         // of placing the binary in the appropriate memory area.
         if ic.rpu_req {
             let inmate_name = ic.inmate.rsplitn(2, '/').next().unwrap_or("");
-            let sym_destination = format!("/lib/firmware/{}", &inmate_name) ;
+            let sym_destination = format!("{}/{}", FIRMWARE_DIR, &inmate_name);
             logging::log_message(logging::Level::Trace, format!("The symdest is {}", &sym_destination).as_str());
            
             // Get the dynamic rcpus value from the state file.
@@ -415,7 +416,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         //let caronte_command = format!("echo \"caronte is listening\"");
         let caronte_command = format!("");
         logging::log_message(logging::Level::Debug, format!("Starting caronted with id {}", &fc.containerid).as_str());
-        let start_output = Command::new("/usr/share/runPHI/caronte")
+        let start_output = Command::new(CARONTE_BIN)
             .arg(caronte_command)
             .arg(&fc.containerid)
             .spawn()?;
@@ -430,7 +431,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                     "jailhouse cell linux {} {} -d {} -i {} -c \"console ttyAMA0,115200\"",
                     fc.containerid, ic.kernel, ic.dtb, ic.cpio
         );
-        let start_output = Command::new("/usr/share/runPHI/caronte")
+        let start_output = Command::new(CARONTE_BIN)
                     .arg(command)
                     .arg(&fc.containerid)
                     .spawn()?;

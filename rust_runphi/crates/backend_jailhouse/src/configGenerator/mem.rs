@@ -20,8 +20,7 @@ use crate::configGenerator;
 //use crate::configGenerator::templates::{RAM_TEMPLATE, UART_TEMPLATE};
 use crate::configGenerator::templates::*;
 
-const WORKPATH: &str = "/usr/share/runPHI";
-//const PCI_IVSHMEM_ID_FILE: &str = "pci_ivshmem_id.txt";
+use f2b::paths::WORKPATH;
 
 // Loads the configuration from the specified file.
 fn load_config(file_path: &Path) -> Result<Value, Box<dyn std::error::Error>> {

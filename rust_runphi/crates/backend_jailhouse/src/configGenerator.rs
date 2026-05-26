@@ -28,8 +28,8 @@ use crate::configGenerator::templates::*;
 #[allow(unused_imports)]
 use logging::timer;
 
-const WORKPATH: &str = "/usr/share/runPHI";
-//const RUNDIR: &str = "/run/runPHI";
+use f2b::paths::WORKPATH;
+
 const STATEFILE: &str = "state.toml";
 const CONFIG_FILE: &str = "platform_info.toml";
 

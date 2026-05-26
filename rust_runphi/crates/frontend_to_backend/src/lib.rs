@@ -8,6 +8,8 @@ use serde_json;
 use std::error::Error;
 use std::fs;
 
+pub mod paths;
+
 // This structure holds all the information mapped from the cli
 // That basically means that are the flags from the OCI spec. We could pass directly
 // the OCI structures, however a buffer structure like this allows for data modification
@@ -94,8 +96,7 @@ impl ImageConfig {
     pub fn get_from_file(mountpoint: &str) -> Result<Self, Box<dyn Error>> {
         // parsing configuration variables from the file
         //TODO: here is the case to parse also a node default used in the case the container does not specify this
-        //TODO: parametrize boot boot.bin and config.json
-        let path = format!("{}/boot/config.json", mountpoint);
+        let path = format!("{}/{}", mountpoint, paths::BOOT_CONFIG_REL);
         let json_str = fs::read_to_string(&path)
             .map_err(|e| format!("cannot read runPHI boot config {}: {}", path, e))?;
         let mut config: ImageConfig = serde_json::from_str(&json_str)
@@ -103,7 +104,7 @@ impl ImageConfig {
         if !config.inmate.is_empty() {
             config.inmate = format!("{}{}", mountpoint, config.inmate).trim().to_string();
         } else {
-            config.inmate = format!("{}/boot/boot.bin", mountpoint);
+            config.inmate = format!("{}/{}", mountpoint, paths::BOOT_INMATE_DEFAULT_REL);
         }
         Ok(config)
     }

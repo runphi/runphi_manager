@@ -11,9 +11,8 @@ use std::path::Path;
 
 use crate::backend;
 use f2b;
+use f2b::paths::WORKPATH;
 use liboci_cli;
-
-const WORKPATH: &str = "/usr/share/runPHI";
 
 pub fn start(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
     backend::startguest(containerid, crundir)

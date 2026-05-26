@@ -16,9 +16,7 @@ use std::path::Path;
 use crate::configGenerator::templates::*;
 
 
-const WORKPATH: &str = "/usr/share/runPHI";
-//const PCI_IVSHMEM_ID_FILE: &str = "pci_ivshmem_id.txt";
-//const STATEFILE: &str = "state.toml";
+use f2b::paths::WORKPATH;
 
 pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn Error>> {
 
