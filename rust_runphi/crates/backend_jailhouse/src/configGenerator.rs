@@ -50,6 +50,12 @@ pub struct Backendconfig {
     pub used_rcpus: Vec<i8>,
 }
 
+impl Default for Backendconfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Backendconfig {
     // Constructor function
     pub fn new() -> Self {
@@ -235,7 +241,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Compilation")?;
     
-    return Ok(config);
+    Ok(config)
 }
 
 fn confighelperstart(
@@ -305,7 +311,7 @@ fn confighelperstart(
     //         fc.containerid
     //     );
     }
-    return Ok(());
+    Ok(())
 }
 
 fn confighelperend(
@@ -334,7 +340,7 @@ fn confighelperend(
 
     // Compile the .c file to .o
     let compile_status = Command::new("gcc")
-        .args(&[
+        .args([
             "-Werror",
             "-Wall",
             "-Wextra",
@@ -348,13 +354,13 @@ fn confighelperend(
         .status()?;
 
     if !compile_status.success() {
-        logging::log_message(logging::Level::Error, &format!("Compilation failed!!!"));
+        logging::log_message(logging::Level::Error, "Compilation failed!!!");
         return Err("Compilation failed".into());
     }
 
     // Convert the .o file to .cell directly in fc.crundir
     let objcopy_status = Command::new("objcopy")
-        .args(&[
+        .args([
             "-O",
             "binary",
             "--remove-section=.note.gnu.property",
@@ -364,14 +370,17 @@ fn confighelperend(
         .status()?;
 
     if !objcopy_status.success() {
-        logging::log_message(logging::Level::Error, &format!("Conversion to .cell file failed!!!"));
+        logging::log_message(logging::Level::Error, "Conversion to .cell file failed!!!");
         return Err("Conversion to .cell file failed".into());
     }
 
     Ok(())
 }
 
-fn retrieve_state() -> Result<(Vec<String>, Vec<i8>, Vec<i8>), Box<dyn std::error::Error>> {
+// (free memory segments, free PCI BDFs, free RPU IDs)
+type StateSnapshot = (Vec<String>, Vec<i8>, Vec<i8>);
+
+fn retrieve_state() -> Result<StateSnapshot, Box<dyn std::error::Error>> {
     let file_path = PathBuf::from(WORKPATH).join(STATEFILE);
     let content = fs::read_to_string(&file_path)?;
     let parsed_toml = content.parse::<Value>()?;
@@ -391,7 +400,7 @@ fn retrieve_state() -> Result<(Vec<String>, Vec<i8>, Vec<i8>), Box<dyn std::erro
         .and_then(|b| b.as_array())
         .ok_or("Missing or invalid 'bdf' field")?
         .iter()
-        .filter_map(|b| b.as_integer().and_then(|val| Some(val as i8)))
+        .filter_map(|b| b.as_integer().map(|val| val as i8))
         .collect::<Vec<i8>>();
 
     let rcpus = parsed_toml
@@ -400,7 +409,7 @@ fn retrieve_state() -> Result<(Vec<String>, Vec<i8>, Vec<i8>), Box<dyn std::erro
         .and_then(|ids| ids.as_array())
         .ok_or("Missing or invalid 'ids' field in 'free_rcpus'")?
         .iter()
-        .filter_map(|id| id.as_integer().and_then(|val| Some(val as i8)))
+        .filter_map(|id| id.as_integer().map(|val| val as i8))
         .collect::<Vec<i8>>();
 
         Ok((segments, bdf, rcpus))
@@ -409,11 +418,11 @@ fn retrieve_state() -> Result<(Vec<String>, Vec<i8>, Vec<i8>), Box<dyn std::erro
 
 fn save_state(
     fc_containerid: &str,
-    c_segments: &Vec<String>,
-    segments_before: &Vec<String>,
-    c_rcpus: &Vec<i8>,
+    c_segments: &[String],
+    segments_before: &[String],
+    c_rcpus: &[i8],
     bdf_used: Option<i8>,
-    c_used_rcpus: &Vec<i8>,
+    c_used_rcpus: &[i8],
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Load the current state from state.toml
     let file_path = Path::new(WORKPATH).join(STATEFILE);

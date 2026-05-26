@@ -148,7 +148,7 @@ pub fn memconfig(
     c: &mut configGenerator::Backendconfig,
     mem_request_hex: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let file_path = Path::new(WORKPATH).join(format!("platform_info.toml"));
+    let file_path = Path::new(WORKPATH).join("platform_info.toml");
 
     // // Insert line into the config file
     // let pattern = r"__u64 rcpus\[\d*\];";
@@ -184,7 +184,7 @@ pub fn memconfig(
         Ok(count) => count,
         Err(e) => {
             eprintln!("Error counting memory regions: {}", e);
-            return Err(e.into());
+            return Err(e);
         }
     };
 
@@ -231,7 +231,7 @@ pub fn memconfig(
                 .map_or(false, |regions| regions.iter().any(|r| r.as_str() == Some("RAM0_TEMPLATE")));
                 
                 // Calculate required memory size in hexadecimal, adding 0x10000 for RAM0_TEMPLATE if present
-                let mem_request_size = u64::from_str_radix(&mem_request_hex.trim_start_matches("0x"), 16)?;
+                let mem_request_size = u64::from_str_radix(mem_request_hex.trim_start_matches("0x"), 16)?;
                 let required_size = if has_ram0_template {
                     mem_request_size + 0x10000
                 } else {

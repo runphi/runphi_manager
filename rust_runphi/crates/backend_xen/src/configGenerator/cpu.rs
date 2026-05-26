@@ -72,10 +72,8 @@ pub fn cpuconf(
             //take the pCPU pinned by Guest
             if line.contains("Domain-0"){
                 continue;
-            }else {
-                if let Ok(cpu) = columns[3].parse::<i64>() {
-                    assigned_cpus.push(cpu);
-                }
+            }else if let Ok(cpu) = columns[3].parse::<i64>() {
+                assigned_cpus.push(cpu);
             }
         }
 
@@ -102,5 +100,5 @@ pub fn cpuconf(
         eprintln!("Error: {}", stderr);
     }
 
-    return Ok(());
+    Ok(())
 }

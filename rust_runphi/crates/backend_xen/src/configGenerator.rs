@@ -31,6 +31,12 @@ pub struct Backendconfig {
     pub net: String,
 }
 
+impl Default for Backendconfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Backendconfig {
     // Constructor function
     pub fn new() -> Self {
@@ -51,7 +57,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _cfg_gen_start = logging::timer::capture();
     //let _ = logging::timer::log_phase("Config_Gen_Start");
 
-    logging::log_message(logging::Level::Info,  format!("starting config generator").as_str());
+    logging::log_message(logging::Level::Info,  "starting config generator".to_string().as_str());
     let mut c = Backendconfig::new();
     c.conffile = format!("{}/config.cfg", fc.crundir);
     logging::log_message(logging::Level::Debug,  format!("Target file path : {}", c.conffile).as_str());
@@ -64,8 +70,8 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     
 
     let _ = confighelperstart(fc, &mut c, &config);
-    logging::log_message(logging::Level::Debug, format!("Finished helper start").as_str());
-    let _ = boot::bootconf(fc, &mut c, &mut config);
+    logging::log_message(logging::Level::Debug, "Finished helper start".to_string().as_str());
+    boot::bootconf(fc, &mut c, &mut config);
 
 
     // This region of code could be extended with code to retrieve other specific Docker's flags which set CPU limitations
@@ -102,7 +108,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     */
 
     let _ = cpu::cpuconf(fc, &mut c, &quota, &period, &cpus);
-    logging::log_message(logging::Level::Debug,  format!("Finished cpu config").as_str());
+    logging::log_message(logging::Level::Debug,  "Finished cpu config".to_string().as_str());
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
 
     // Extract values from the JSON structure
@@ -118,7 +124,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //Pass everything to memconfig    
     logging::log_message(logging::Level::Debug,  format!("Memory request: {} MB, Memory reservation: {} MB", mem_request, st_req).as_str());
     let _ = mem::memconf(&mut c,&st_req, &mem_request,LVM_GROUP_NAME);
-    logging::log_message(logging::Level::Debug,  format!("Finished mem config").as_str());
+    logging::log_message(logging::Level::Debug,  "Finished mem config".to_string().as_str());
 
     //-------------------------------------------------------------------------------------
     //In xen physical device are managed by dom0 - unless u wanto to set PCI passthroug
@@ -126,7 +132,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _ = device::devconfig(&mut c);
 
     let _ = network::netconfig(&mut c);
-    logging::log_message(logging::Level::Debug,  format!("Finished network config").as_str());
+    logging::log_message(logging::Level::Debug,  "Finished network config".to_string().as_str());
     //------------------------------------------------------------------------------------
     //If u want to write the console u have to specify this file in the create command in lib 
     //by sending this command "xl console container_id >> "$output_file" 2>&1 &"
@@ -144,7 +150,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //------------------------------------------------------------------------------------
     //let _ = communication::communicationconfig(&mut c);
     let _ = confighelperend(fc, &mut c, &config);
-    logging::log_message(logging::Level::Info,  format!("Finished config generation").as_str());
+    logging::log_message(logging::Level::Info,  "Finished config generation".to_string().as_str());
     logging::log_message(logging::Level::Debug,  format!("Config file generated at: {}", c.conffile).as_str());
     logging::log_message(logging::Level::Debug,  format!("Config generation is:\n{}", c.conf).as_str());
     //log_timestamp("Config_Gen_End")?; //Just for boot times timeline extraction
@@ -154,7 +160,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let _cfg_gen_end = logging::timer::capture();
     //let _ = logging::timer::log_elapsed(_cfg_gen_start, _cfg_gen_end, "config_generate");
 
-    return Ok(config);
+    Ok(config)
 }
 
 fn confighelperstart(
@@ -171,7 +177,7 @@ fn confighelperstart(
 name = \"{}\" \n"
 ,fc.containerid,fc.containerid);
 
-    return Ok(());
+    Ok(())
 }
 
 fn confighelperend(
@@ -181,12 +187,12 @@ fn confighelperend(
 ) -> Result<(), Box<dyn Error>> {
 
     // Add the end of the configuration file
-    c.conf.push_str(&format!("gic_version=\"v2\"\non_crash=\"preserve\"\n"));
+    c.conf.push_str("gic_version=\"v2\"\non_crash=\"preserve\"\n");
 
     //create and write the file
     std::fs::write(&c.conffile, &c.conf)?;
 
-    return Ok(());
+    Ok(())
 }
 
 #[allow(dead_code)]

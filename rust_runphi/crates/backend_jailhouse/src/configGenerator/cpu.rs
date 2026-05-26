@@ -73,5 +73,5 @@ pub fn cpuconf(
     c.conf
         .push_str(&format!("\n\t.cpus = {{\n\t\t0x{},\n\t}},\n", hex_str)); //for cpus in 0x
 
-    return Ok(());
+    Ok(())
 }

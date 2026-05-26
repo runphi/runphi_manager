@@ -20,7 +20,7 @@ pub fn communicationconfig(c: &mut configGenerator::Backendconfig) -> Result<(),
         \t\t JAILHOUSE_CON_REGDIST_4,\n\
     },";
     // Compile a regular expression to match the pattern and insert the cpus
-    let re = Regex::new(&pattern)?;
+    let re = Regex::new(pattern)?;
     if let Some(pos) = re.find(&c.conf) {
         c.conf
             .insert_str(pos.end(), &format!("\n{}\n", linetoinsert));

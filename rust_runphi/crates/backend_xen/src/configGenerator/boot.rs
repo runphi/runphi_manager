@@ -23,7 +23,7 @@ pub fn bootconf(
     // if no kernel and ramdisk are provided, default are used
     if ic.inmate.is_empty(){
         //ic.kernel = format!("{}/linux/Image", nonrootdefaultpath).to_string();
-        ic.inmate = format!("/root/vmlinuz").to_string();
+        ic.inmate = "/root/vmlinuz".to_string().to_string();
     }
     
     if ic.ramdisk.is_empty(){

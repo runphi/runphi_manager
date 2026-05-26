@@ -15,8 +15,6 @@ use std::str;
 use toml::Value;
 //use std::time::Instant; //TIME CLOCK MONOTONIC
 
-use f2b;
-use logging;
 
 #[allow(non_snake_case)]
 pub mod configGenerator;
@@ -231,7 +229,7 @@ pub fn startguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>
         start_process.wait()?;
     }
     
-    return Ok(());
+    Ok(())
 }
 
 pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
@@ -256,7 +254,7 @@ pub fn stopguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>>
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Cell stop")?;
 
-    return Ok(());
+    Ok(())
 }
 
 //TODO: We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
@@ -283,17 +281,17 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
-    fs::remove_dir_all(&crundir).ok();
+    fs::remove_dir_all(crundir).ok();
 
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Cell destroy")?;
 
-    return Ok(());
+    Ok(())
 }
 
 pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
-    fs::remove_dir_all(&crundir).ok();
-    return Ok(());
+    fs::remove_dir_all(crundir).ok();
+    Ok(())
 }
 
 // Create spawns a process, caronte, that is required to keep the container open. Caronte is set as
@@ -332,7 +330,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         // to omnivisor during the cell load. Notice that here onivisor takes care 
         // of placing the binary in the appropriate memory area.
         if ic.rpu_req {
-            let inmate_name = ic.inmate.rsplitn(2, '/').next().unwrap_or("");
+            let inmate_name = ic.inmate.rsplit('/').next().unwrap_or("");
             let sym_destination = format!("{}/{}", FIRMWARE_DIR, &inmate_name);
             logging::log_message(logging::Level::Trace, format!("The symdest is {}", &sym_destination).as_str());
            
@@ -356,7 +354,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
             let mut cmd_load = Command::new(JAILHOUSE_PATH);
             cmd_load.arg("cell").arg("load")
                 .arg(&fc.containerid)
-                .arg("-r").arg(&inmate_name)   
+                .arg("-r").arg(inmate_name)   
                 .arg(&rcpu);
                 
             let command_str: Vec<String> = std::iter::once(cmd_load.get_program().to_string_lossy().to_string())
@@ -414,7 +412,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         }
 
         //let caronte_command = format!("echo \"caronte is listening\"");
-        let caronte_command = format!("");
+        let caronte_command = String::new();
         logging::log_message(logging::Level::Debug, format!("Starting caronted with id {}", &fc.containerid).as_str());
         let start_output = Command::new(CARONTE_BIN)
             .arg(caronte_command)
@@ -447,7 +445,7 @@ pub fn storeinfo(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), 
     std::fs::write(format!("{}/bundle", fc.crundir), &fc.bundle)?;
     std::fs::write(format!("{}/pidfile", fc.crundir), &fc.pidfile)?;
     std::fs::write(format!("{}/OS", fc.crundir), &ic.os_var)?;
-    return Ok(());
+    Ok(())
 }
 
 // pub fn storeadditionalinfo(c: &mut Backendconfig) -> Result<(), Box<dyn Error>> {

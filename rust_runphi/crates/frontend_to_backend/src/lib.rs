@@ -4,7 +4,6 @@
 //*********************************************
 
 use serde::Deserialize;
-use serde_json;
 use std::error::Error;
 use std::fs;
 
@@ -27,6 +26,12 @@ pub struct FrontendConfig {
     pub guestconsole: String,
     pub pidfile: String,
 }
+impl Default for FrontendConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FrontendConfig {
     pub fn new() -> Self {
         Self {

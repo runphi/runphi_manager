@@ -55,7 +55,7 @@ pub fn memconf(
     let mut lvm_name: String = String ::from("lv_"); 
 
     let pattern = r#"name\s*=\s*"([^"]+)""#;
-    let re = Regex::new(&pattern).unwrap();
+    let re = Regex::new(pattern).unwrap();
     let reader =io::Cursor::new(c.conf.clone());
 
     for line in reader.lines() {
@@ -89,7 +89,7 @@ pub fn memconf(
     if *ram_request == 0{
 
         c.conf
-            .push_str(&format!("\n#Initial memory and max memory\nmemory =  1024 \nmaxmem = 1024\n"));
+            .push_str("\n#Initial memory and max memory\nmemory =  1024 \nmaxmem = 1024\n");
 
     }else {
 
@@ -99,5 +99,5 @@ pub fn memconf(
 
     }
 
-    return Ok(());
+    Ok(())
 }

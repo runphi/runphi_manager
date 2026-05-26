@@ -13,7 +13,6 @@ use std::str;
 use std::io::Write;
 //use std::time::Instant; //TIME CLOCK MONOTONIC
 
-use f2b;
 use f2b::paths::CARONTE_BIN;
 
 #[allow(non_snake_case)]
@@ -105,9 +104,9 @@ pub fn destroyguest(containerid: &str, crundir: &str) -> Result<(), Box<dyn Erro
     let pidk: i32 = pidtokill.trim().parse()?;
     let pid = Pid::from_raw(pidk);
     let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
-    fs::remove_dir_all(&crundir).ok();
+    fs::remove_dir_all(crundir).ok();
 
-    return Ok(());
+    Ok(())
 }
 
 // pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
@@ -187,7 +186,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
     // Wait for xl create to finish
     xl_process.wait()?;
 
-    let command = format!("echo \"caronte is listening\"");
+    let command = "echo \"caronte is listening\"".to_string();
 
     let start_output = Command::new(CARONTE_BIN)
         .arg(command)
@@ -206,13 +205,13 @@ pub fn storeinfo(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), 
     std::fs::write(format!("{}/bundle", fc.crundir), &fc.bundle)?;
     std::fs::write(format!("{}/pidfile", fc.crundir), &fc.pidfile)?;
     std::fs::write(format!("{}/OS", fc.crundir), &ic.os_var)?;
-    return Ok(());
+    Ok(())
 }
 
 
 pub fn cleanup(_containerid: &str, crundir: &str) -> Result<(), Box<dyn Error>> {
-    fs::remove_dir_all(&crundir).ok();
-    return Ok(());
+    fs::remove_dir_all(crundir).ok();
+    Ok(())
 }
 
 // pub fn storeadditionalinfo(c: &mut Backendconfig) -> Result<(), Box<dyn Error>> {

@@ -23,7 +23,7 @@ pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn E
     // Insert line into the config file
     let pattern = r"struct jailhouse_memory mem_regions\[\d+\];";
 
-    let file_path = Path::new(WORKPATH).join(format!("platform_info.toml"));
+    let file_path = Path::new(WORKPATH).join("platform_info.toml");
     let templates_map = get_templates_map(); // Get all templates
     
     // Get minimum BDF from c.bdf
@@ -72,7 +72,7 @@ pub fn devconfig(c: &mut configGenerator::Backendconfig) -> Result<(), Box<dyn E
     };
 
     // Compile a regular expression to match the pattern and insert the pci_devices
-    let re = Regex::new(&pattern)?;
+    let re = Regex::new(pattern)?;
     if let Some(pos) = re.find(&c.conf) {
         c.conf
             .insert_str(pos.end(), &format!("\n{}", linetoinsert));

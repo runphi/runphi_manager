@@ -15,7 +15,7 @@ use std::collections::HashMap;
 },
 "#; */
 
-pub const RAM_TEMPLATE: &'static str = r#"
+pub const RAM_TEMPLATE: &str = r#"
 /* RAM */ {
 	.phys_start = {phys_start},
 	.virt_start = {virt_start},
@@ -25,7 +25,7 @@ pub const RAM_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const RAM0_TEMPLATE: &'static str = r#"
+pub const RAM0_TEMPLATE: &str = r#"
 /* RAM */ {
 	.phys_start = {phys_start},
 	.virt_start = {virt_start},
@@ -57,7 +57,7 @@ pub const TCMB_TEMPLATE: &'static str = r#"
 },
 "#; */
 
-pub const TCMA_TEMPLATE: &'static str = r#"
+pub const TCMA_TEMPLATE: &str = r#"
 /* TCM 0-A */ {
 	.phys_start = {phys_start},
 	.virt_start = {virt_start},
@@ -67,7 +67,7 @@ pub const TCMA_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const TCMB_TEMPLATE: &'static str = r#"
+pub const TCMB_TEMPLATE: &str = r#"
 /* TCM 0-B */ {
 	.phys_start = {phys_start},
 	.virt_start = {virt_start},
@@ -77,7 +77,7 @@ pub const TCMB_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const UART_TEMPLATE: &'static str = r#"
+pub const UART_TEMPLATE: &str = r#"
 /* UART */ {
 	.phys_start = {phys_start},
 	.virt_start = {virt_start},
@@ -87,7 +87,7 @@ pub const UART_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const COMM_REGION_TEMPLATE: &'static str = r#"
+pub const COMM_REGION_TEMPLATE: &str = r#"
 /* communication region */ {
 	.virt_start = 0x80000000,
 	.size = 0x00001000,
@@ -96,7 +96,7 @@ pub const COMM_REGION_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const IVSHMEM_DEMO_TEMPLATE: &'static str = r#"
+pub const IVSHMEM_DEMO_TEMPLATE: &str = r#"
 /* IVSHMEM shared memory region for 00:00.0 (demo) */
 	{
 	.phys_start = 0x7f8f0000,
@@ -132,9 +132,9 @@ pub const IVSHMEM_DEMO_TEMPLATE: &'static str = r#"
 	},
 "#;
 
-pub const IVSHMEM_TEMPLATE: &'static str = r#"JAILHOUSE_SHMEM_NET_REGIONS({address}, 1),"#;
+pub const IVSHMEM_TEMPLATE: &str = r#"JAILHOUSE_SHMEM_NET_REGIONS({address}, 1),"#;
 
-pub const IRQ_CHIP_TEMPLATE: &'static str = r#"
+pub const IRQ_CHIP_TEMPLATE: &str = r#"
 .irqchips = {
 	/* GIC */ {
 		.address = {gic_address},
@@ -149,7 +149,7 @@ pub const IRQ_CHIP_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const IRQ_CHIP_BOARD_TEMPLATE: &'static str = r#"
+pub const IRQ_CHIP_BOARD_TEMPLATE: &str = r#"
 .irqchips = {
 	/* GIC */ {
 		.address = {gic_address},
@@ -164,7 +164,7 @@ pub const IRQ_CHIP_BOARD_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const PCI_DEVICE_TEMPLATE_WITH_DEMO: &'static str = r#"
+pub const PCI_DEVICE_TEMPLATE_WITH_DEMO: &str = r#"
 .pci_devices = {
 { /* IVSHMEM 00:00.0 (demo) */
 	.type = JAILHOUSE_PCI_TYPE_IVSHMEM,
@@ -189,7 +189,7 @@ pub const PCI_DEVICE_TEMPLATE_WITH_DEMO: &'static str = r#"
 },
 "#;
 
-pub const PCI_DEVICE_TEMPLATE: &'static str = r#"
+pub const PCI_DEVICE_TEMPLATE: &str = r#"
 .pci_devices = {
 { /* IVSHMEM 00:0{ivshmem_bdf}.0 (networking) */
 	.type = JAILHOUSE_PCI_TYPE_IVSHMEM,
@@ -204,12 +204,12 @@ pub const PCI_DEVICE_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const PCI_DEVICE_EMPTY_TEMPLATE: &'static str = r#"
+pub const PCI_DEVICE_EMPTY_TEMPLATE: &str = r#"
 .pci_devices = {
 },
 "#;
 
-pub const QEMU_PREAMBLE_TEMPLATE: &'static str = r#"
+pub const QEMU_PREAMBLE_TEMPLATE: &str = r#"
 #include "types.h"
 #include "cell-config.h"
 
@@ -241,7 +241,7 @@ struct {
 	},
 "#;
 
-pub const ULTRASCALE_PREAMBLE_TEMPLATE: &'static str = r#"
+pub const ULTRASCALE_PREAMBLE_TEMPLATE: &str = r#"
 #include "types.h"
 #include "cell-config.h"
 
@@ -274,7 +274,7 @@ struct {
 	},
 "#;
 
-pub const SHM_TEMPLATE: &'static str = r#"
+pub const SHM_TEMPLATE: &str = r#"
 /* SHM */ {
 	.phys_start = 0x46d00000,
 	.virt_start = 0x46d00000,
@@ -284,7 +284,7 @@ pub const SHM_TEMPLATE: &'static str = r#"
 },
 "#;
 
-pub const SYSTEM_COUNTER_TEMPLATE: &'static str = r#"
+pub const SYSTEM_COUNTER_TEMPLATE: &str = r#"
 /* SYSTEM COUNTER */ {
 	.phys_start = 0xff250000,
 	.virt_start = 0xff250000,
