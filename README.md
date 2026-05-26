@@ -54,7 +54,8 @@ The backend calls the resource managers and some helper functions (config_genera
 
 RunPHI generates some files for each ZIC to keep track of their information (like the cell configuration file and compiled configuration). They can be found in /run/runPHI/<ContainerName>/
 
-For the full architecture diagram, per-crate breakdown, OCI lifecycle, and pointers into the code, see [doc/README.md](doc/README.md).
+![RunPHI architecture](doc/runPHI_architecture.png)
+For the full architecture description, per-crate breakdown, OCI lifecycle, and pointers into the code, see [doc/README.md](doc/README.md).
 
 
 ## Workflow

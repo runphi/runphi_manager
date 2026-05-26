@@ -18,14 +18,18 @@ flowchart TB
     %% runphi binary
     subgraph runphi_bin["runphi binary (one backend baked in at build time)"]
         direction TB
+        
         subgraph runphi_crate["runphi crate (hypervisor-independent)"]
             main["main: OCI dispatch"]
             forwarding["forwarding decision<br/>(annotation / /boot/config.json /<br/>/run/runPHI/&lt;id&gt;/)"]
         end
+        
         oci["liboci_cli<br/>(OCI command parsing)"]
         f2b["frontend_to_backend<br/>(FrontendConfig, ImageConfig)"]
         logging["logging<br/>(log file + TickSource trait)"]
-        subgraph active_backend["backend_jailhouse  OR  backend_xen<br/>(Cargo feature selects one at build time)"]
+        
+        subgraph active_backend["backend_jailhouse OR backend_xen (Cargo feature selects one at build time)"]
+            direction TB
             backend_api["startguest / stopguest /<br/>createguest / destroyguest /<br/>cleanup / storeinfo"]
             configGenerator["configGenerator<br/>(builds cell/domU config)"]
             tick_source["TickSource impl<br/>(/dev/mem MMIO  |  /dev/arm_timer)"]
