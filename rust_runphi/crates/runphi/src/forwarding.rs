@@ -3,7 +3,6 @@
 //          Francesco Boccola (francesco.boccola@unina.it)
 //*********************************************
 
-use serde_json;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

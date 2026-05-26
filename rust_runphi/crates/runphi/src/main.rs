@@ -7,7 +7,6 @@
 
 //use clap::{CommandFactory, Parser};
 use clap::Parser;
-use serde_json;
 use std::error::Error;
 use std::fs;
 
@@ -195,5 +194,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     //log_timestamp_with_memory_mmap("end main", log_file, mem_address, mem_size).unwrap();
-    return Ok(());
+    Ok(())
 }
