@@ -5,4 +5,4 @@ RUN rustup target add aarch64-unknown-linux-gnu
 RUN apt update
 RUN apt install -y gcc-aarch64-linux-gnu
 
-
+WORKDIR /home/
