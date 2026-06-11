@@ -53,6 +53,58 @@ fn run_command(cmd: &mut Command) -> Result<Output, Box<dyn Error>> {
 
 //const WORKPATH: &str = "/usr/share/runPHI";
 
+// Create the per-container logical volume and populate it with a clone
+// of the container rootfs, so the docker image becomes the guest's
+// persistent root filesystem: lvcreate -> mkfs.ext4 -> mount -> copy ->
+// umount. On any failure after lvcreate the LV is removed again so a
+// failed create leaves no leaked volume behind.
+fn provision_lvm_root(
+    lv: &str,
+    size_mb: &str,
+    rootfs: &Path,
+    crundir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    // "/dev/<vg>/lv_<id>" -> lv name + vg name for lvcreate
+    let mut comps = lv.rsplitn(3, '/');
+    let lvname = comps.next().ok_or("malformed lv path")?;
+    let vg = comps.next().ok_or("malformed lv path")?;
+
+    run_command(
+        Command::new("lvcreate")
+            .arg("-L")
+            .arg(format!("{}M", size_mb))
+            .arg("-n")
+            .arg(lvname)
+            .arg(vg),
+    )?;
+
+    let mnt = crundir.join("mnt");
+    let populate = (|| -> Result<(), Box<dyn Error>> {
+        run_command(Command::new("mkfs.ext4").arg("-q").arg("-F").arg(lv))?;
+        fs::create_dir_all(&mnt)?;
+        run_command(Command::new("mount").arg(lv).arg(&mnt))?;
+        // Always try to umount, even if the copy failed, then report the
+        // first error of the two.
+        let copied = run_command(
+            Command::new("cp")
+                .arg("-a")
+                .arg(format!("{}/.", rootfs.display()))
+                .arg(&mnt),
+        );
+        let unmounted = run_command(Command::new("umount").arg(&mnt));
+        copied?;
+        unmounted?;
+        Ok(())
+    })();
+
+    if let Err(e) = populate {
+        // Best-effort cleanup; the original error is what gets reported.
+        let _ = Command::new("umount").arg(&mnt).output();
+        let _ = Command::new("lvremove").arg("-y").arg(lv).output();
+        return Err(e);
+    }
+    Ok(())
+}
 
 pub fn startguest(containerid: &str, _crundir: &Path) -> Result<(), Box<dyn Error>> {
     run_command(Command::new("xl").arg("unpause").arg(containerid))?;
@@ -68,34 +120,25 @@ pub fn stopguest(containerid: &str, _crundir: &Path) -> Result<(), Box<dyn Error
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     run_command(Command::new("xl").arg("destroy").arg(containerid))?;
-    // Disk stuff, no disk in arm
-    // TODO: for x86_64, we need to remove the disk from the vg
-    // Construct the file path
-    //let conffile = format!("{}/config.cfg", crundir);
 
-    //let file = File::open(conffile.clone())?;
-    //let reader = io::BufReader::new(file);
-
-    // let mut disk = String::new();
-    
-    // let re_disk = Regex::new(r#"disk\s*=\s*\[\s*'(/dev/[^,]+)"#)
-    //     .unwrap();
-    
-    // for line in reader.lines() {
-    //     let line = line?; 
-
-    //     if let Some(captures) = re_disk.captures(&line) {
-    //         disk = captures.get(1).unwrap().as_str().to_string();
-    //     }
-    // }
-    
-    // //sudo lvremove /dev/vg_my_group/lv_my_volume
-    // let _ = Command::new("lvremove")
-    //     .arg(disk)
-    //     .arg("-y")
-    //     .output()
-    //     .expect("Failed to execute command");
-
+    // Remove the LVM-backed root disk, if one was provisioned for this
+    // container (state file written by configGenerator::disk). Failure is
+    // logged but not propagated: kill and delete both come through here,
+    // and the volume may already be gone on the second pass.
+    let diskstate = crundir.join("disk");
+    if let Ok(state) = std::fs::read_to_string(&diskstate) {
+        if let Some(lv) = state.split_whitespace().next() {
+            match run_command(Command::new("lvremove").arg("-y").arg(lv)) {
+                Ok(_) => {
+                    let _ = fs::remove_file(&diskstate);
+                }
+                Err(e) => logging::log_message(
+                    logging::Level::Warn,
+                    format!("could not remove LV {}: {}", lv, e).as_str(),
+                ),
+            }
+        }
+    }
 
     //writeln!(logfile, "lib.rs after destroy")?; //DEBUG
 
@@ -124,47 +167,18 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
     // Read bundle and pidfile paths from the filesystem
     let conffile = fc.crundir.join("config.cfg");
 
-    // Disk stuff, no disk in arm
-    //TODO: for x86_64, we need to manage the disk
-    //let file = File::open(conffile.clone())?;
-    //let reader = io::BufReader::new(file);
-
-    //let mut storage_request = String::new();
-    // let mut disk = String::new();
-
-    // let re_st = Regex::new(r#"#storage_request\s*=\s*(\d+M)"#) // Es: #storage_request = 1024M
-    //     .unwrap();
-    // let re_disk = Regex::new(r#"disk\s*=\s*\[\s*'(/dev/[^,]+)"#)
-    //     .unwrap();
-
-    // for line in reader.lines() {
-    //     let line = line?; 
-
-    //     if let Some(captures) = re_st.captures(&line) {
-    //         storage_request = captures.get(1).unwrap().as_str().to_string();
-    //     }
-
-    //     if let Some(captures) = re_disk.captures(&line) {
-    //         disk = captures.get(1).unwrap().as_str().to_string();
-    //     }
-    // }
-
-    // let mut parts = disk.rsplitn(2, '/');
-    
-    // // The firts part will be "name"
-    // let name = parts.next().unwrap();
-    
-    // // The second one will be "/dev/gname"
-    // let gname_path = parts.next().unwrap();
-
-    // let _ = Command::new("lvcreate")
-    //     .arg("-L")
-    //     .arg(storage_request) 
-    //     .arg("-n")
-    //     .arg(name)
-    //     .arg(gname_path)   
-    //     .output()
-    //     .expect("Error during vgs execution");
+    // Provision the LVM-backed root disk if the config generator planned
+    // one (disk_type=="lvm"): the state file holds "<lv_path> <size_mb>".
+    // The file-backed mode needs no provisioning (the image is used in
+    // place), and bare-metal / initramfs guests have no state file at all.
+    let diskstate = fc.crundir.join("disk");
+    if diskstate.exists() {
+        let state = std::fs::read_to_string(&diskstate)?;
+        let mut parts = state.split_whitespace();
+        let lv = parts.next().ok_or("malformed disk state file")?;
+        let size_mb = parts.next().ok_or("malformed disk state file")?;
+        provision_lvm_root(lv, size_mb, &fc.mountpoint, &fc.crundir)?;
+    }
 
     // This is an asynchronous command, not good to take times
     /* let _ = Command::new("xl")

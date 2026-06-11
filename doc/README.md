@@ -148,6 +148,35 @@ this the backend additionally emits, on top of the bare-metal stanza:
 On x86, `gic_version` is never emitted (it is an ARM GIC concept that `xl`
 rejects on x86). A bare-metal container's generated config is unchanged on ARM.
 
+### Root-disk strategies for Linux guests (`disk_type`)
+
+Besides the initramfs default, a Linux guest can boot from a virtual disk
+attached as `xvda` (the backend then appends `root=/dev/xvda` to `extra`).
+Selected by `disk_type` in `/boot/config.json` (handled by
+`backend_xen/src/configGenerator/disk.rs`):
+
+| `disk_type` | Root filesystem | Fields | Lifecycle |
+|---|---|---|---|
+| *(absent / `""`)* | initramfs (`ramdisk`), in RAM | `ramdisk` | nothing to provision or clean |
+| `"file"` | raw ext4 image shipped in the container, used **in place** from the mounted rootfs | `disk_image` (path in rootfs) | none — guest writes land in the container's writable layer and are discarded with the container |
+| `"lvm"` | host logical volume populated at `create` with a **clone of the container rootfs** (the docker image becomes the VM root) | `disk_size` (MB, optional — defaults to rootfs size +30% +64 MB) | `create`: lvcreate → mkfs.ext4 → copy rootfs; `destroy`: lvremove. State tracked in `/run/runPHI/<id>/disk` |
+
+```json
+{ "os_var": "linux", "inmate": "/boot/Image", "disk_type": "file", "disk_image": "/boot/rootfs.img" }
+{ "os_var": "linux", "inmate": "/boot/Image", "disk_type": "lvm", "disk_size": 1024 }
+```
+
+Notes:
+
+- With a disk root, `ramdisk` is optional: if present the initramfs
+  switch-roots via `root=`; if absent the kernel must have `xen-blkfront`
+  built in to mount `/dev/xvda` directly.
+- LVM host prerequisites: a volume group (default name `test-vg`, overridable
+  by writing the VG name into `/usr/share/runPHI/xen_lvm_vg`) and `mkfs.ext4`
+  (e2fsprogs). Free space in the VG is checked at config generation.
+- Example boot configs: `target/demo_containers/linux/config.json`
+  (initramfs), `config.file-disk.json`, `config.lvm.json`.
+
 ## Pointers into the code
 
 - OCI dispatch: [rust_runphi/crates/runphi/src/main.rs](../rust_runphi/crates/runphi/src/main.rs)

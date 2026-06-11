@@ -54,9 +54,14 @@ pub fn bootconf(
         }
 
         // Minimal kernel command line: route the console to the Xen PV console
-        // so `xl console` shows the boot. Root is the unpacked initramfs, so no
-        // root= is required.
-        c.conf.push_str("extra = \"console=hvc0\" \n");
+        // so `xl console` shows the boot. With a disk-backed root ("file" or
+        // "lvm" in disk.rs, both attached as xvda) point root= at it; without
+        // one the root is the unpacked initramfs and no root= is required.
+        if matches!(ic.disk_type.as_str(), "file" | "lvm") {
+            c.conf.push_str("extra = \"console=hvc0 root=/dev/xvda\" \n");
+        } else {
+            c.conf.push_str("extra = \"console=hvc0\" \n");
+        }
     }
 
     //idk what to do with cpio
@@ -112,6 +117,24 @@ mod tests {
         // os_var matching is case-insensitive.
         let mut ic_upper = image_config("Linux", "/k", "/r");
         assert!(run_bootconf(&mut ic_upper).contains("ramdisk = \"/r\" \n"));
+    }
+
+    // With a disk-backed root (file or lvm) the kernel command line must
+    // point root= at xvda; without one it must not mention root= at all.
+    #[test]
+    fn linux_disk_root_sets_root_cmdline() {
+        for disk_type in ["file", "lvm"] {
+            let mut ic = image_config("linux", "/k", "");
+            ic.disk_type = disk_type.to_string();
+            let conf = run_bootconf(&mut ic);
+            assert!(
+                conf.contains("extra = \"console=hvc0 root=/dev/xvda\" \n"),
+                "missing root= for disk_type={}",
+                disk_type
+            );
+        }
+        let mut ic = image_config("linux", "/k", "/r");
+        assert!(!run_bootconf(&mut ic).contains("root="));
     }
 
     // On x86 a Linux guest is booted as PVH; bare-metal never gets a type line.

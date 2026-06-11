@@ -77,7 +77,7 @@ pub fn create(
     if !crundir.join("bundle").exists() {
         let rootfs_in = f2b.jsonconfig["root"]["path"]
             .as_str()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Cannot determine rootfs"))?;
+            .ok_or_else(|| io::Error::other("Cannot determine rootfs"))?;
         let rootfs_path = Path::new(rootfs_in);
         f2b.mountpoint = if rootfs_path.is_absolute() {
             rootfs_path.to_path_buf()

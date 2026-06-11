@@ -86,6 +86,21 @@ pub struct ImageConfig {
     pub initrd: String,
     #[serde(default)]
     pub netconf: String,
+    // Root-disk strategy for a Linux guest. "" (default) means no disk: the
+    // root filesystem comes from the initramfs in `ramdisk`. "file" attaches
+    // a raw image shipped in the container (see disk_image) as xvda. "lvm"
+    // provisions a logical volume on the host, populated with a clone of the
+    // container rootfs, and attaches it as xvda.
+    #[serde(default)]
+    pub disk_type: String,
+    // disk_type=="file": path, inside the container rootfs, of the raw ext4
+    // image to attach. Resolved against the mountpoint like inmate/ramdisk.
+    #[serde(default)]
+    pub disk_image: String,
+    // disk_type=="lvm": size of the logical volume in MB. 0 (default) lets
+    // the backend derive it from the rootfs size plus slack.
+    #[serde(default)]
+    pub disk_size: u64,
     // The starting_vaddress variable specifies the virtual address that the binary in inmate is
     // expecting to start. This determines how to remap the memory in the MMU when available, or
     // decides the placement when MMU not avaialble
@@ -134,6 +149,10 @@ impl ImageConfig {
         // unaffected.
         if !config.ramdisk.is_empty() {
             config.ramdisk = Self::resolve_rootfs_path(mountpoint, &config.ramdisk);
+        }
+        // Same for the raw disk image used by disk_type=="file".
+        if !config.disk_image.is_empty() {
+            config.disk_image = Self::resolve_rootfs_path(mountpoint, &config.disk_image);
         }
         Ok(config)
     }

@@ -1,0 +1,7 @@
+{
+    "os_var": "linux",
+    "inmate": "/boot/Image",
+    "disk_type": "lvm",
+    "disk_size": 1024,
+    "net": "no"
+}

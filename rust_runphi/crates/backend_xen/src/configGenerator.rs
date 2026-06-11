@@ -12,14 +12,13 @@ pub mod boot;
 pub mod communication;
 pub mod cpu;
 pub mod device;
+pub mod disk;
 pub mod mem;
 pub mod network;
 
 //const WORKPATH: &str = "/usr/share/runPHI";
 //const RUNDIR: &str = "/run/runPHI";
 //(fc.crundir = run/runPHI/containerid)
-//in questo caso stiamo utilizzando LVM per gestire i dischi guest
-const LVM_GROUP_NAME: &str = "test-vg";
 
 // This structure holds all the information related to the configuration of the partitioned container
 // There is the configuration file, the configuration string, and needed variables for resources,
@@ -122,20 +121,19 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     logging::log_message(logging::Level::Debug,  "Finished cpu config".to_string().as_str());
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
 
-    // Extract values from the JSON structure
-    //In the json structure only limit is created by kubernetes memory reservation doesn't exist, (but it cluod be specified in other way??), anyway we need to cuild the lv for the vm
-    let st_req = fc.jsonconfig["linux"]["resources"]["memory"]["reservation"] //Domain memory in MB, (--memory-reservation="")
-    .as_u64() // Assuming memory values are in unsigned integers
-    .unwrap_or(32); // Set default value to 512 MB if the value is missing
-
     let mem_request = fc.jsonconfig["linux"]["resources"]["memory"]["limit"] //Maximum domain memory in MB, (-m, --memory="")
         .as_u64() // Assuming memory values are in unsigned integers
-        .unwrap_or(32); // Set default value to 512M if the value is missing
-    
-    //Pass everything to memconfig    
-    logging::log_message(logging::Level::Debug,  format!("Memory request: {} MB, Memory reservation: {} MB", mem_request, st_req).as_str());
-    let _ = mem::memconf(&mut c,&st_req, &mem_request,LVM_GROUP_NAME);
+        .unwrap_or(32); // Set default value to 32 MB if the value is missing
+
+    logging::log_message(logging::Level::Debug,  format!("Memory request: {} MB", mem_request).as_str());
+    mem::memconf(&mut c, &mem_request)?;
     logging::log_message(logging::Level::Debug,  "Finished mem config".to_string().as_str());
+
+    // Root disk for Linux guests ("file" or "lvm" disk_type in the boot
+    // config; no-op otherwise). Disk size used to be smuggled in through
+    // docker's --memory-reservation; it now comes from boot/config.json.
+    disk::diskconf(fc, &mut c, &config)?;
+    logging::log_message(logging::Level::Debug,  "Finished disk config".to_string().as_str());
 
     //-------------------------------------------------------------------------------------
     //In xen physical device are managed by dom0 - unless u wanto to set PCI passthroug
