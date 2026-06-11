@@ -68,7 +68,17 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //writeln!(logfile, "Parsing config.json")?;                        //DEBUG
     let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint)?);
 
-    
+    // Guest type drives the boot stanza: "linux" yields a Linux domU (kernel +
+    // initramfs, PVH on x86), anything else is treated as a bare-metal inmate.
+    let guest_kind = if config.os_var.eq_ignore_ascii_case("linux") {
+        "linux"
+    } else {
+        "baremetal"
+    };
+    logging::log_message(
+        logging::Level::Info,
+        format!("Guest type: {} (os_var=\"{}\")", guest_kind, config.os_var).as_str(),
+    );
 
     let _ = confighelperstart(fc, &mut c, &config);
     logging::log_message(logging::Level::Debug, "Finished helper start".to_string().as_str());
@@ -187,8 +197,13 @@ fn confighelperend(
     _ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
 
-    // Add the end of the configuration file
-    c.conf.push_str("gic_version=\"v2\"\non_crash=\"preserve\"\n");
+    // Add the end of the configuration file.
+    // gic_version selects the emulated ARM GIC and is meaningful only on ARM;
+    // xl on x86 rejects it, so it must be emitted only for aarch64 builds.
+    // on_crash applies to every architecture.
+    #[cfg(target_arch = "aarch64")]
+    c.conf.push_str("gic_version=\"v2\"\n");
+    c.conf.push_str("on_crash=\"preserve\"\n");
 
     //create and write the file
     std::fs::write(&c.conffile, &c.conf)?;

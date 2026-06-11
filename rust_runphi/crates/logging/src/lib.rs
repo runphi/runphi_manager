@@ -32,6 +32,14 @@ impl Logger {
     fn new(level: Level, path: Option<PathBuf>) -> Self {
         let effective_path = path.unwrap_or_else(|| PathBuf::from(LOG_PATH));
 
+        // Ensure the parent directory exists. create(true) only creates the
+        // file, not intermediate directories, so on a fresh host (e.g. an x86
+        // Xen Dom0 where /usr/share/runPHI does not exist yet) the open would
+        // otherwise panic with NotFound on the very first invocation.
+        if let Some(parent) = effective_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
         let file = OpenOptions::new()
                 .create(true)
                 .append(true)

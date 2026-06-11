@@ -1,0 +1,6 @@
+{
+    "os_var": "linux",
+    "inmate": "/boot/Image",
+    "ramdisk": "/boot/rootfs.cpio.gz",
+    "net": "no"
+}

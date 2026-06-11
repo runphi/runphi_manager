@@ -31,9 +31,33 @@ pub fn bootconf(
         //ic.ramdisk = format!("/root/initrd.gz").to_string(); //Commented becauses raises an error if the file does not exist
     }
 
-    //c.conf.push_str(&format!("\n\nkernel = \"{}\" \n\nramdisk = \"{}\" \n\n", ic.inmate, ic.ramdisk)); remove the ramdisk
+    // The kernel line is common to every Xen guest: for a bare-metal inmate it
+    // is the binary itself, for a Linux domU it is the kernel Image. ic.inmate
+    // is already resolved against the rootfs mountpoint by ImageConfig.
     c.conf.push_str(&format!("kernel = \"{}\" \n", ic.inmate));
 
+    // A Linux domU additionally needs an initramfs to act as its root
+    // filesystem, a kernel command line, and (on x86) an explicit PVH boot
+    // type. Bare-metal guests (os_var != "linux") take none of this, so their
+    // generated config is byte-for-byte identical to before.
+    let is_linux = ic.os_var.eq_ignore_ascii_case("linux");
+    if is_linux {
+        // On x86 a directly-booted Linux kernel runs as a PVH guest. On ARM
+        // Xen has a single guest type, so no `type` line is emitted there.
+        #[cfg(target_arch = "x86_64")]
+        c.conf.push_str("type = \"pvh\" \n");
+
+        // Root filesystem comes from the initramfs shipped in the image. The
+        // path is already resolved against the rootfs mountpoint by ImageConfig.
+        if !ic.ramdisk.is_empty() {
+            c.conf.push_str(&format!("ramdisk = \"{}\" \n", ic.ramdisk));
+        }
+
+        // Minimal kernel command line: route the console to the Xen PV console
+        // so `xl console` shows the boot. Root is the unpacked initramfs, so no
+        // root= is required.
+        c.conf.push_str("extra = \"console=hvc0\" \n");
+    }
 
     //idk what to do with cpio
 
@@ -41,4 +65,62 @@ pub fn bootconf(
     //if ic.dtb.is_empty() {
     //    ic.dtb = format!("{}/configs/arm64/dts/inmate-qemu-arm64.dtb", xenpath).to_string();
     //}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // All ImageConfig fields are #[serde(default)], so an empty JSON object
+    // yields a fully-defaulted instance we can tweak per case.
+    fn image_config(os_var: &str, inmate: &str, ramdisk: &str) -> f2b::ImageConfig {
+        let mut ic: f2b::ImageConfig = serde_json::from_str("{}").unwrap();
+        ic.os_var = os_var.to_string();
+        ic.inmate = inmate.to_string();
+        ic.ramdisk = ramdisk.to_string();
+        ic
+    }
+
+    fn run_bootconf(ic: &mut f2b::ImageConfig) -> String {
+        let fc = f2b::FrontendConfig::new();
+        let mut c = configGenerator::BackendConfig::new();
+        bootconf(&fc, &mut c, ic);
+        c.conf
+    }
+
+    // Bare-metal (os_var != "linux") must emit exactly the kernel line and
+    // nothing else: this is the regression guard for existing inmate guests.
+    #[test]
+    fn baremetal_emits_only_kernel_line() {
+        let mut ic = image_config("zephyr", "/mnt/rootfs/boot/hello.bin", "");
+        let conf = run_bootconf(&mut ic);
+        assert_eq!(conf, "kernel = \"/mnt/rootfs/boot/hello.bin\" \n");
+    }
+
+    // A Linux domU adds a ramdisk and a kernel command line on top of kernel.
+    #[test]
+    fn linux_emits_kernel_ramdisk_and_cmdline() {
+        let mut ic = image_config(
+            "linux",
+            "/mnt/rootfs/boot/Image",
+            "/mnt/rootfs/boot/rootfs.cpio.gz",
+        );
+        let conf = run_bootconf(&mut ic);
+        assert!(conf.contains("kernel = \"/mnt/rootfs/boot/Image\" \n"));
+        assert!(conf.contains("ramdisk = \"/mnt/rootfs/boot/rootfs.cpio.gz\" \n"));
+        assert!(conf.contains("extra = \"console=hvc0\" \n"));
+        // os_var matching is case-insensitive.
+        let mut ic_upper = image_config("Linux", "/k", "/r");
+        assert!(run_bootconf(&mut ic_upper).contains("ramdisk = \"/r\" \n"));
+    }
+
+    // On x86 a Linux guest is booted as PVH; bare-metal never gets a type line.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn x86_linux_emits_pvh_type_baremetal_does_not() {
+        let mut linux = image_config("linux", "/k", "/r");
+        assert!(run_bootconf(&mut linux).contains("type = \"pvh\" \n"));
+        let mut bare = image_config("zephyr", "/k", "");
+        assert!(!run_bootconf(&mut bare).contains("type ="));
+    }
 }

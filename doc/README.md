@@ -112,6 +112,42 @@ state   → same forwarding check  →  read bundle/pidfile/rootfs from /run/run
 | `<rootfs>/boot/config.json` | container image (input, not produced by us) | Boot parameters for the partitioned cell: which kernel/inmate to load, OS variant, devices, memory layout, etc. Parsed by `frontend_to_backend::ImageConfig::get_from_file`. |
 | `/usr/local/sbin/runc_vanilla` | `switch_to_runphi.sh` | Backup of the distro's original `runc`, executed when runPHI forwards a non-runPHI container. |
 
+## Container boot config (`/boot/config.json`)
+
+A runPHI-managed container ships a `/boot/config.json` in its rootfs. Its
+presence is the marker that makes `forwarding` keep the container instead of
+forwarding it to runc, and `frontend_to_backend::ImageConfig::get_from_file`
+parses it. The `os_var` field selects the kind of guest the Xen backend builds.
+
+**Bare-metal inmate** (Zephyr or any single binary):
+
+```json
+{ "os_var": "zephyr", "inmate": "/boot/hello.bin", "net": "no" }
+```
+
+The backend emits a minimal domU config: `kernel = "<rootfs>/boot/hello.bin"`,
+the cpu/memory stanzas, and (on ARM) `gic_version="v2"`.
+
+**Linux domU** (kernel + initramfs):
+
+```json
+{ "os_var": "linux", "inmate": "/boot/Image", "ramdisk": "/boot/rootfs.cpio.gz", "net": "no" }
+```
+
+The container must ship a kernel `Image` and a `rootfs.cpio.gz` initramfs under
+`/boot`. `inmate` is the kernel, `ramdisk` is the initramfs that becomes the
+guest's root filesystem (root runs from RAM — no virtual disk, no host LVM). For
+this the backend additionally emits, on top of the bare-metal stanza:
+
+- `type = "pvh"` — only on x86 (`xl` on x86 needs an explicit PVH boot type;
+  ARM has a single guest type and omits it).
+- `ramdisk = "<rootfs>/boot/rootfs.cpio.gz"`.
+- `extra = "console=hvc0"` — kernel command line; the console is routed to the
+  Xen PV console so `xl console <id>` shows the boot.
+
+On x86, `gic_version` is never emitted (it is an ARM GIC concept that `xl`
+rejects on x86). A bare-metal container's generated config is unchanged on ARM.
+
 ## Pointers into the code
 
 - OCI dispatch: [rust_runphi/crates/runphi/src/main.rs](../rust_runphi/crates/runphi/src/main.rs)

@@ -103,7 +103,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize the logging and timer modules
     logging::init_logger(Some(std::path::PathBuf::from(logging::LOG_PATH)));//opts.global.log);
-    backend::timer::install()?;
+    // The timer is only used for optional boot-time instrumentation and is
+    // backed by a platform device that may be absent (e.g. the Xen backend's
+    // /dev/arm_timer is ARM-only and does not exist on an x86 Xen Dom0). A
+    // missing timer must never stop runphi from managing containers, so treat
+    // install failure as non-fatal: log it and continue. With no source
+    // installed, logging::timer::capture() simply returns 0.
+    if let Err(e) = backend::timer::install() {
+        logging::log_message(
+            logging::Level::Warn,
+            format!(
+                "timer source unavailable, continuing without boot-time instrumentation: {}",
+                e
+            )
+            .as_str(),
+        );
+    }
 
     //timer::log_phase("runPHI main started")?; //To log the time of runphi start
 

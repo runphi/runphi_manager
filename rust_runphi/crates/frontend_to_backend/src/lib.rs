@@ -99,6 +99,16 @@ pub struct ImageConfig {
     // TODO: handle default or missing values in a decent way
 }
 impl ImageConfig {
+    fn resolve_rootfs_path(mountpoint: &Path, path: &str) -> String {
+        let path = Path::new(path);
+        let path = if path.is_absolute() {
+            path.strip_prefix("/").unwrap_or(path)
+        } else {
+            path
+        };
+        mountpoint.join(path).display().to_string()
+    }
+
     pub fn get_from_file(mountpoint: &Path) -> Result<Self, Box<dyn Error>> {
         // parsing configuration variables from the file
         //TODO: here is the case to parse also a node default used in the case the container does not specify this
@@ -111,14 +121,19 @@ impl ImageConfig {
         // under rootfs" with text rendered into the cell config; a PathBuf
         // here would just push string conversions outward.
         if !config.inmate.is_empty() {
-            config.inmate = format!("{}{}", mountpoint.display(), config.inmate)
-                .trim()
-                .to_string();
+            config.inmate = Self::resolve_rootfs_path(mountpoint, &config.inmate);
         } else {
             config.inmate = mountpoint
                 .join(paths::BOOT_INMATE_DEFAULT_REL)
                 .display()
                 .to_string();
+        }
+        // The ramdisk (initramfs) is a path inside the container rootfs, just
+        // like inmate. Resolve it against the mountpoint here so backends can
+        // emit it verbatim. Bare-metal images leave ramdisk empty and are
+        // unaffected.
+        if !config.ramdisk.is_empty() {
+            config.ramdisk = Self::resolve_rootfs_path(mountpoint, &config.ramdisk);
         }
         Ok(config)
     }
