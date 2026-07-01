@@ -106,6 +106,12 @@ pub struct ImageConfig {
     // decides the placement when MMU not avaialble
     #[serde(default)]
     pub starting_vaddress: String,
+    // Guest RAM in MB. 0 (default) means unspecified: the config generator
+    // falls back to docker's OCI memory limit (which is in bytes, converted to
+    // MB) and then to a built-in default. Set it in /boot/config.json to size
+    // the domU explicitly.
+    #[serde(default)]
+    pub memory: u64,
     // This lines are needed to include the "net" and "rpu_req" field
     #[serde(default)]
     pub net: String,

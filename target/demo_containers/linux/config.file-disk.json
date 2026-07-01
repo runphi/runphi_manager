@@ -3,5 +3,6 @@
     "inmate": "/boot/Image",
     "disk_type": "file",
     "disk_image": "/boot/rootfs.img",
+    "memory": 512,
     "net": "no"
 }

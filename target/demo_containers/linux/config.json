@@ -2,5 +2,6 @@
     "os_var": "linux",
     "inmate": "/boot/Image",
     "ramdisk": "/boot/rootfs.cpio.gz",
+    "memory": 512,
     "net": "no"
 }

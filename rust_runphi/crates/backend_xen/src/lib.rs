@@ -180,26 +180,12 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
         provision_lvm_root(lv, size_mb, &fc.mountpoint, &fc.crundir)?;
     }
 
-    // This is an asynchronous command, not good to take times
-    /* let _ = Command::new("xl")
-        .arg("create")
-        .arg(conffile)
-        .output()
-        .expect("Failed to execute command");
-
-    log_timestamp("Create_Guest_End")?; */
-
-    // Launch xl create asynchronously
-    let mut xl_process = Command::new("xl")
-        .arg("create")
-        .arg(&conffile)
-        .spawn()?;
-
-    // Log immediately - this captures the moment the domain creation begins
-    //log_timestamp("Create_Guest_End")?;
-
-    // Wait for xl create to finish
-    xl_process.wait()?;
+    // Create the domain. run_command surfaces a non-zero `xl create` exit as
+    // an error (carrying xl's stderr) instead of the previous spawn()+wait(),
+    // whose `?` only caught a failure to *wait* and silently ignored a failed
+    // domain build — which then surfaced later as a misleading "invalid domain
+    // identifier" from `xl unpause` at start.
+    run_command(Command::new("xl").arg("create").arg(&conffile))?;
 
     let command = "echo \"caronte is listening\"".to_string();
 

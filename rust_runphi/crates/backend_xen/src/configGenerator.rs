@@ -121,9 +121,19 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     logging::log_message(logging::Level::Debug,  "Finished cpu config".to_string().as_str());
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
 
-    let mem_request = fc.jsonconfig["linux"]["resources"]["memory"]["limit"] //Maximum domain memory in MB, (-m, --memory="")
-        .as_u64() // Assuming memory values are in unsigned integers
-        .unwrap_or(32); // Set default value to 32 MB if the value is missing
+    // Guest RAM in MB. Prefer the value from /boot/config.json
+    // (ImageConfig.memory). Otherwise fall back to docker's OCI memory limit,
+    // which is expressed in BYTES and must be converted to MB (the old code
+    // read it as MB and also defaulted to 32 MB, too small for a Linux kernel).
+    // 0 here lets mem::memconf apply its built-in default.
+    let mem_request: u64 = if config.memory > 0 {
+        config.memory
+    } else {
+        fc.jsonconfig["linux"]["resources"]["memory"]["limit"] // (-m, --memory=""), in bytes
+            .as_u64()
+            .map(|bytes| bytes / (1024 * 1024))
+            .unwrap_or(0)
+    };
 
     logging::log_message(logging::Level::Debug,  format!("Memory request: {} MB", mem_request).as_str());
     mem::memconf(&mut c, &mem_request)?;
