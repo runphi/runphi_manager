@@ -39,14 +39,20 @@ pub fn stop(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
 
 // Flow: stop guest, destroy guest, look for processes (caronte and shim) containing the container id and kill em
 pub fn kill(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
-    backend::stopguest(containerid, crundir)?;
+    // Pause is best-effort: on a failed create there is no domain, so
+    // `xl pause` errors — but destroyguest (xl destroy) tears down a running
+    // or paused domain either way, so a pause failure must not abort teardown.
+    let _ = backend::stopguest(containerid, crundir);
     backend::destroyguest(containerid, crundir)?;
     Ok(())
 }
 
 // Basically copy of destroy atm plus removal
 pub fn delete(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
-    backend::stopguest(containerid, crundir)?;
+    // Best-effort pause (see kill): ensures destroyguest — which removes the
+    // /run/runPHI/<id> state dir — always runs, even when create failed and
+    // left no domain to pause.
+    let _ = backend::stopguest(containerid, crundir);
     backend::destroyguest(containerid, crundir)?;
     backend::cleanup(containerid, crundir)?;
     Ok(())
