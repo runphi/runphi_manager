@@ -124,15 +124,19 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     // Guest RAM in MB. Prefer the value from /boot/config.json
     // (ImageConfig.memory). Otherwise fall back to docker's OCI memory limit,
     // which is expressed in BYTES and must be converted to MB (the old code
-    // read it as MB and also defaulted to 32 MB, too small for a Linux kernel).
-    // 0 here lets mem::memconf apply its built-in default.
+    // read it as MB). If neither is set, use a per-guest-type default:
+    // bare-metal inmates historically defaulted to 32 MB — preserved verbatim
+    // so existing (ARM) zephyr images are byte-for-byte unaffected — while a
+    // Linux domU needs far more, so 1024 MB.
+    let default_mb: u64 = if guest_kind == "linux" { 1024 } else { 32 };
     let mem_request: u64 = if config.memory > 0 {
         config.memory
     } else {
         fc.jsonconfig["linux"]["resources"]["memory"]["limit"] // (-m, --memory=""), in bytes
             .as_u64()
             .map(|bytes| bytes / (1024 * 1024))
-            .unwrap_or(0)
+            .filter(|mb| *mb > 0)
+            .unwrap_or(default_mb)
     };
 
     logging::log_message(logging::Level::Debug,  format!("Memory request: {} MB", mem_request).as_str());

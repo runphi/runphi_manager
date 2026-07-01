@@ -119,7 +119,17 @@ pub fn stopguest(containerid: &str, _crundir: &Path) -> Result<(), Box<dyn Error
 //We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
-    run_command(Command::new("xl").arg("destroy").arg(containerid))?;
+    // Destroy the domain. A failed create (e.g. an arch-mismatched kernel)
+    // leaves no domain, so `xl destroy` errors with "invalid domain
+    // identifier"; log and continue so the rest of teardown (LV removal,
+    // caronte kill, state-dir removal) still runs instead of leaking
+    // /run/runPHI/<id>. The normal path (domain present) is unaffected.
+    if let Err(e) = run_command(Command::new("xl").arg("destroy").arg(containerid)) {
+        logging::log_message(
+            logging::Level::Warn,
+            format!("xl destroy {} failed (continuing teardown): {}", containerid, e).as_str(),
+        );
+    }
 
     // Remove the LVM-backed root disk, if one was provisioned for this
     // container (state file written by configGenerator::disk). Failure is
@@ -142,12 +152,17 @@ pub fn destroyguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Err
 
     //writeln!(logfile, "lib.rs after destroy")?; //DEBUG
 
-    // Now kill caronte
-    let pathtokill = std::fs::read_to_string(crundir.join("pidfile"))?;
-    let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
-    let pidk: i32 = pidtokill.trim().parse()?;
-    let pid = Pid::from_raw(pidk);
-    let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
+    // Now kill caronte, if we recorded its pid. On a failed create the pidfile
+    // may not exist (caronte is spawned only after a successful xl create), so
+    // tolerate a missing/garbage pidfile rather than bailing out with `?` and
+    // leaving the state dir behind. remove_dir_all always runs last.
+    if let Ok(pathtokill) = std::fs::read_to_string(crundir.join("pidfile")) {
+        if let Ok(pidtokill) = std::fs::read_to_string(pathtokill.trim()) {
+            if let Ok(pidk) = pidtokill.trim().parse::<i32>() {
+                let _ = nix::sys::signal::kill(Pid::from_raw(pidk), Signal::SIGTERM);
+            }
+        }
+    }
     fs::remove_dir_all(crundir).ok();
 
     Ok(())
