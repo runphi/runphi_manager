@@ -180,12 +180,14 @@ pub fn createguest(fc: &f2b::FrontendConfig, _ic: &f2b::ImageConfig) -> Result<(
         provision_lvm_root(lv, size_mb, &fc.mountpoint, &fc.crundir)?;
     }
 
-    // Create the domain. run_command surfaces a non-zero `xl create` exit as
-    // an error (carrying xl's stderr) instead of the previous spawn()+wait(),
-    // whose `?` only caught a failure to *wait* and silently ignored a failed
-    // domain build — which then surfaced later as a misleading "invalid domain
-    // identifier" from `xl unpause` at start.
-    run_command(Command::new("xl").arg("create").arg(&conffile))?;
+    // Build the domain PAUSED (-p) and leave it paused: this maps the OCI
+    // lifecycle correctly, create() builds the domain and start() (xl unpause)
+    // actually runs it. Without -p the domain boots here during OCI `create`,
+    // and if the guest exits/panics before `start`, `xl unpause` then fails
+    // with a misleading "invalid domain identifier". run_command also surfaces
+    // a non-zero `xl create` exit as an error (carrying xl's stderr), unlike
+    // the previous spawn()+wait() whose `?` only caught a failure to *wait*.
+    run_command(Command::new("xl").arg("create").arg("-p").arg(&conffile))?;
 
     let command = "echo \"caronte is listening\"".to_string();
 
