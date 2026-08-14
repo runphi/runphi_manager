@@ -12,6 +12,7 @@ edition = "2021"
 default = ["jailhouse"]
 jailhouse = ["dep:backend_jailhouse"]
 xen = ["dep:backend_xen"]
+kvm = ["dep:backend_kvm"]
 
 [dependencies.clap]
 version = "4.1.6"
@@ -28,6 +29,7 @@ regex = "1.5.4"
 liboci-cli = { path = "../liboci-cli" }
 backend_jailhouse = { path = "../backend_jailhouse", optional = true }
 backend_xen       = { path = "../backend_xen",       optional = true }
+backend_kvm       = { path = "../backend_kvm",       optional = true }
 f2b = { path = "../frontend_to_backend" }
 logging = { path = "../logging" }
 

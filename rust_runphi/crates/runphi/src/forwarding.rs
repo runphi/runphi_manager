@@ -28,10 +28,7 @@ pub enum ForwardDecision {
 //      cell). Anything else - including the Kubernetes pause container and
 //      arbitrary docker images - is forwarded to runc.
 pub fn decide_create(config: &serde_json::Value, bundle: &Path) -> ForwardDecision {
-    if let Some(runtime) = config
-        .pointer(&format!("/annotations/{}", RUNTIME_ANNOTATION))
-        .and_then(serde_json::Value::as_str)
-    {
+    if let Some(runtime) = config.pointer(&format!("/annotations/{}", RUNTIME_ANNOTATION)).and_then(serde_json::Value::as_str) {
         match runtime {
             "runphi" => return ForwardDecision::UseRunphi,
             "runc" => return ForwardDecision::ForwardToRunc,
@@ -46,6 +43,7 @@ pub fn decide_create(config: &serde_json::Value, bundle: &Path) -> ForwardDecisi
         }
     }
 
+    // Auto-detect
     if rootfs_has_runphi_boot_config(config, bundle) {
         ForwardDecision::UseRunphi
     } else {

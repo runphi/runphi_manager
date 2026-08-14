@@ -21,10 +21,16 @@ use liboci_cli::{GlobalOpts, StandardCmd};
 pub use backend_jailhouse as backend;
 #[cfg(feature = "xen")]
 pub use backend_xen as backend;
+#[cfg(feature = "kvm")]
+pub use backend_kvm as backend;
 
-#[cfg(not(any(feature = "jailhouse", feature = "xen")))]
-compile_error!("Select a backend: --features jailhouse or --features xen");
-#[cfg(all(feature = "jailhouse", feature = "xen"))]
+#[cfg(not(any(feature = "jailhouse", feature = "xen", feature = "kvm")))]
+compile_error!("Select a backend: --features jailhouse, --features xen or --features kvm");
+#[cfg(any(
+    all(feature = "jailhouse", feature = "xen"),
+    all(feature = "jailhouse", feature = "kvm"),
+    all(feature = "xen", feature = "kvm")
+))]
 compile_error!("Backends jailhouse and xen are mutually exclusive");
 
 // Version string surfaces the active backend so `runphi --version`
@@ -35,6 +41,8 @@ compile_error!("Backends jailhouse and xen are mutually exclusive");
 const VERSION_STR: &str = "0.5.8 (backend: jailhouse)";
 #[cfg(feature = "xen")]
 const VERSION_STR: &str = "0.5.8 (backend: xen)";
+// #[cfg(feature = "kvm")]
+// const VERSION_STR: &str = "0.5.8 (backend: kvm)";
 
 // High-level commandline option definition
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)

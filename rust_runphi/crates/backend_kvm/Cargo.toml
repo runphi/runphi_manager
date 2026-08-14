@@ -1,0 +1,9 @@
+[package]
+name = "backend_kvm"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+f2b = { path = "../frontend_to_backend" }
+logging = { path = "../logging" }
