@@ -41,8 +41,8 @@ compile_error!("Backends jailhouse and xen are mutually exclusive");
 const VERSION_STR: &str = "0.5.8 (backend: jailhouse)";
 #[cfg(feature = "xen")]
 const VERSION_STR: &str = "0.5.8 (backend: xen)";
-// #[cfg(feature = "kvm")]
-// const VERSION_STR: &str = "0.5.8 (backend: kvm)";
+#[cfg(feature = "kvm")]
+const VERSION_STR: &str = "0.5.8 (backend: kvm)";
 
 // High-level commandline option definition
 // This takes global options as well as individual commands as specified in [OCI runtime-spec](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md)

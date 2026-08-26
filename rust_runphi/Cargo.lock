@@ -58,8 +58,11 @@ dependencies = [
 name = "backend_kvm"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "f2b",
  "logging",
+ "psutil",
+ "regex",
 ]
 
 [[package]]
