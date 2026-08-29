@@ -28,8 +28,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     let mut c = BackendConfig::new();
     c.args_file = fc.crundir.join("qemu.args");
 
-    // 1. Parsing metadati immagine (boot/config.json)
-    let config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint)?);
+    let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint)?);
     let is_linux = config.os_var.eq_ignore_ascii_case("linux");
 
     //TODO(lorenzo): Qua si deve capire se va bene anche per arm
@@ -40,23 +39,29 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     }
     #[cfg(target_arch = "x86_64")]
     {
-        c.add_arg("-M", "pc");
-        c.add_arg("-cpu", "qemu64");
+        c.add_arg("-M", "q35");
+        c.add_arg("-cpu", "host");
     }
 
-    //c.add_flag("-enable-kvm");
-    c.add_arg("-display", "none");
-    c.add_arg("-monitor", "none");
+    c.add_flag("-enable-kvm");
+    //c.add_arg("-display", "none");
+    //c.add_arg("-monitor", "none");
+    c.add_flag("-nographic");
     c.add_flag("-no-reboot");
     c.add_arg("-d", "int,guest_errors");
+    
     let debug_file = fc.crundir.join("qemu-cpu-debug.log");
+
+    let console_sock = fc.crundir.join("console.sock");
+    c.add_arg("-serial", format!("unix:{},server,nowait", console_sock.display()));
+
     c.add_arg("-D", format!("{}", debug_file.display()));
     c.add_flag("-S"); 
     
     let console_file = fc.crundir.join("console.log");
-    c.add_arg("-serial", format!("file:{}", console_file.display()));
+    //c.add_arg("-serial", format!("file:{}", console_file.display()));
+    c.add_arg("-serial", "stdio");
 
-    // 3. Calcolo vCPU (da quota/period OCI)
     let period = fc.jsonconfig["linux"]["resources"]["cpu"]["period"]
         .as_f64()
         .unwrap_or(10000.0);
@@ -65,7 +70,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
         .as_f64()
         .unwrap_or(20000.0);
     
-    let cpus = (quota / period);
+    let cpus = quota / period;
 
     c.add_arg("-smp", format!("{}", cpus));
 
@@ -87,18 +92,17 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     c.add_arg("-qmp", format!("unix:{},server,nowait", qmp_socket.display()));
 
     //TODO(lorenzo): Si deve testare qui se va bene anche per un linux inmate
-
     if is_linux {
-        if !config.kernel.is_empty() {
-            c.add_arg("-kernel", &config.kernel);
+        if !config.inmate.is_empty() {
+            c.add_arg("-kernel", &config.inmate);
         }
-        if !config.cpio.is_empty() {
-            c.add_arg("-initrd", &config.cpio);
+        if !config.ramdisk.is_empty() {
+            c.add_arg("-initrd", &config.ramdisk);
         }
         if !config.dtb.is_empty() {
             c.add_arg("-dtb", &config.dtb);
         }
-        c.add_arg("-append", "console=ttyAMA0,115200 root=/dev/ram rdinit=/sbin/init");
+        c.add_arg("-append", "console=ttyS0,115200");
     } else {
         // Bare-metal / RTOS (Zephyr, FreeRTOS ELF/BIN)
         c.add_arg("-kernel", &config.inmate);

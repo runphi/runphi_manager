@@ -50,9 +50,7 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
 
     let conffile = fc.crundir.join("qemu.args");
     let qemu_log = fc.crundir.join("qemu.log");
-    
-    let qmp_socket_path = fc.crundir.join(format!("{}-qmp.sock", fc.containerid));
-    
+        
     let args_content = fs::read_to_string(&conffile)?;
     
     let qemu_args: Vec<&str> = args_content
