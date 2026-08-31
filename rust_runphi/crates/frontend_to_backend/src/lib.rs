@@ -47,6 +47,13 @@ impl FrontendConfig {
     }
 }
 
+// NOTE(lorenzo): This structure allows to map vCPUs to pCPUs for CPU pinning
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct VcpuPin {
+    pub vcpu: usize,
+    pub pcpu: usize,
+}
+
 // This structure holds the information that describe the image to be started as partitioned cell
 // These are additional to standard information required by containers. For example, if dealing with a
 // binary, the starting virtual address is required to perform a mapping, or the devices used or the
@@ -116,8 +123,31 @@ pub struct ImageConfig {
     #[serde(default)]
     pub net: String,
     #[serde(default)]
-    pub rpu_req: bool
+    pub rpu_req: bool,
     // TODO: handle default or missing values in a decent way
+
+    // NOTE(lorenzo): adding fields to specify vCPU to pin, isolation, IRQ steering...
+    
+    // NOTE(lorenzo): number of vCPUs to allocate
+    #[serde(default)]
+    pub vcpus: u32,
+
+    // NOTE(lorenzo): Explicit map vCPU -> pCPU (ex. [{"vcpu": 0, "pcpu": 2}, ...])
+    #[serde(default)]
+    pub vcpu_pinning: Vec<VcpuPin>,
+
+    // NOTE(lorenzo): CPU to isolate (ex "2,3")
+    #[serde(default)]
+    pub isolcpu: String,
+
+    // NOTE(lorenzo): Set CPU NOHZ_FULL 
+    #[serde(default)]
+    pub nohz_full: String,
+
+    // NOTE(lorenzo): Map specifying where redirect IRQs
+    #[serde(default)]
+    pub irq_steering: Option<Vec<usize>>,
+
 }
 impl ImageConfig {
     fn resolve_rootfs_path(mountpoint: &Path, path: &str) -> String {
