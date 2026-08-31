@@ -35,7 +35,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     let is_linux = config.os_var.eq_ignore_ascii_case("linux");
 
     let _ = cpu::cpuconf(&fc,&config, &mut c);
-    let _ = boot::bootconf(&fc, &config, &mut c, &is_linux);
+    let _ = boot::bootconf(&config, &mut c, &is_linux);
 
     //c.add_arg("-display", "none");
     //c.add_arg("-monitor", "none");

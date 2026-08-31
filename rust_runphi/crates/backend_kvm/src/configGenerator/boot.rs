@@ -4,7 +4,6 @@ use crate::configGenerator;
 use f2b;
 
 pub fn bootconf(
-    fc: &f2b::FrontendConfig,
     ic: &f2b::ImageConfig,
     c: &mut configGenerator::BackendConfig,
     is_linux: &bool
