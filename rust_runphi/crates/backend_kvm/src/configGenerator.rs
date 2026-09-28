@@ -35,7 +35,7 @@ impl BackendConfig {
     /// Assembla tutti i blocchi parziali in un documento Domain XML valido per virsh
     pub fn to_xml(&self) -> String {
         let devices = self.devices_xml.join("\n    ");
-
+//TODO(lorenzo): La parte di memory backing non è attualmente configurabile via config.json o per passaggio di parametri da docker run
         format!(
             r#"<domain type='{}'>
   <name>{}</name>
@@ -116,9 +116,14 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     disk::diskconf(fc, &mut c, &config)?;
     network::netconf(fc, &config, &mut c)?;
 
-    let serial_xml = r#"<serial type='pty'>
+    let serial_log = format!("/var/log/libvirt/qemu/runphi-{}-serial.log", fc.containerid);
+    let serial_xml = format!(
+        r#"<serial type='pty'>
+      <log file='{}' append='on'/>
       <target type='isa-serial' port='0'/>
-    </serial>"#.to_string();
+    </serial>"#,
+        serial_log
+    );
     c.devices_xml.push(serial_xml);
 
     // Console primaria agganciata al PTY

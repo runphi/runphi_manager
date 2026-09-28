@@ -80,23 +80,35 @@ pub fn cpuconf(
         );
     }
 
-    
+
     c.vcpus = allocated_vcpus;
 
-    // NOTE(lorenzo): Set the define vCPU pinning, if present
+    // Set the defined vCPU pinning and apply SCHED_FIFO priority to vCPU
     if !ic.vcpu_pinning.is_empty() {
         let mut cputune = String::from("<cputune>\n");
         for pin in &ic.vcpu_pinning {
             cputune.push_str(&format!(
-                "    <vcpupin vcpu='{}' cpuset='{}'/>\n",
-                pin.vcpu, pin.pcpu
+                    "    <vcpupin vcpu='{}' cpuset='{}'/>\n",
+                    pin.vcpu, pin.pcpu
             ));
         }
+
+        // Give every pinned vCPU real-time host scheduling priority.
+        let vcpu_list = ic
+            .vcpu_pinning
+            .iter()
+            .map(|p| p.vcpu.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        cputune.push_str(&format!(
+                "    <vcpusched vcpus='{}' scheduler='fifo' priority='99'/>\n",
+                vcpu_list
+        ));
+
         cputune.push_str("  </cputune>");
         c.cputune_xml = cputune;
     }
-    
-    
+
     // Validate IRQ steering target CPUs and warn if any are isolated
     if let Some(cpus) = crate::irq::get_steer_irqs(fc, ic) {
         crate::irq::warn_if_isolated(&cpus, ic);
