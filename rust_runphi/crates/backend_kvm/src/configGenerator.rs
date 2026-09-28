@@ -54,7 +54,7 @@ impl BackendConfig {
     <label>root:root</label>
   </seclabel>
   <memoryBacking>
-    <locked/>
+   <locked\>
   </memoryBacking>
   <on_poweroff>destroy</on_poweroff>
   <on_reboot>destroy</on_reboot>

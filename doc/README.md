@@ -28,17 +28,17 @@ flowchart TB
         f2b["frontend_to_backend<br/>(FrontendConfig, ImageConfig)"]
         logging["logging<br/>(log file + TickSource trait)"]
         
-        subgraph active_backend["backend_jailhouse OR backend_xen (Cargo feature selects one at build time)"]
+        subgraph active_backend["backend_jailhouse OR backend_xen OR backend_kvm (Cargo feature selects one at build time)"]
             direction TB
             backend_api["startguest / stopguest /<br/>createguest / destroyguest /<br/>cleanup / storeinfo"]
-            configGenerator["configGenerator<br/>(builds cell/domU config)"]
-            tick_source["TickSource impl<br/>(/dev/mem MMIO  |  /dev/arm_timer)"]
+            configGenerator["configGenerator<br/>(builds cell/domU/domain config)"]
+            tick_source["TickSource impl<br/>(/dev/mem MMIO | /dev/arm_timer | x86 TSC)"]
         end
     end
 
     %% Below runphi
     runc["runc_vanilla<br/>(/usr/local/sbin/runc_vanilla)"]
-    hypervisor["Jailhouse cell  |  Xen domU"]
+    hypervisor["Jailhouse cell  |  Xen domU  |  KVM guest"]
 
     %% Connections
     kubelet --> containerd
@@ -61,7 +61,7 @@ flowchart TB
 
 Walking the diagram:
 
-- **One binary, one backend.** `runphi` is a single binary; which hypervisor backend is compiled in is decided by Cargo features (`jailhouse` default, or `--features xen`). `runphi --version` prints which one. There is no runtime backend switch.
+- **One binary, one backend.** `runphi` is a single binary; which hypervisor backend is compiled in is decided by Cargo features (`jailhouse` default, `--features xen`, or `--features kvm`). `runphi --version` prints which one. There is no runtime backend switch.
 - **Hypervisor-independent core.** Everything in the `runphi`, `logging`, `liboci_cli`, and `frontend_to_backend` crates is the same regardless of backend. The active backend is re-exported at the `runphi` crate root as `backend`, so the rest of the codebase calls `backend::createguest(...)` without knowing which one it is.
 - **Forwarding fork.** Before runPHI takes ownership of a container, `forwarding` decides whether the OCI call should be handled here or forwarded to vanilla runc. Decision rules in order: (1) explicit OCI annotation `org.runphi.runtime`, (2) at `create`, presence of `/boot/config.json` in the rootfs, (3) for later commands, presence of `/run/runPHI/<id>/`.
 - **TickSource boundary.** The `logging::timer` module is hypervisor-independent, but its tick source is not. Each backend implements a tiny `TickSource` trait (one method, `read_ticks() -> u64`) and the backend's `timer::install()` is called once from `main`. After that, `timer::capture()` works the same way everywhere.
@@ -76,8 +76,9 @@ Walking the diagram:
 | `logging` | no | Log file writer; `timer` module with the `TickSource` trait and `u64` tick API. |
 | `backend_jailhouse` | yes | Jailhouse backend: drives `jailhouse cell {create,load,start}`, MMIO mmap of `/dev/mem` for the timer. |
 | `backend_xen` | yes | Xen backend: drives `xl create/unpause/destroy`, reads `/dev/arm_timer` for the timer. |
+| `backend_kvm` | yes | KVM backend: drives Libvirt / `virsh` (`domain.xml` create/resume/suspend/destroy), supervisor watcher, dynamic IRQ steering, x86 TSC (`rdtsc`) timer. |
 
-The two backend crates expose the same seven items (`startguest`, `stopguest`, `destroyguest`, `cleanup`, `createguest`, `storeinfo`, plus the `configGenerator` module). Adding a new backend means producing the same surface. See `rust_runphi/README.md` § *Adding a new hypervisor backend* for the step-by-step recipe.
+The three backend crates expose the same seven items (`startguest`, `stopguest`, `destroyguest`, `cleanup`, `createguest`, `storeinfo`, plus the `configGenerator` module). Adding a new backend means producing the same surface. See `rust_runphi/README.md` § *Adding a new hypervisor backend* for the step-by-step recipe.
 
 ## Lifecycle of a partitioned container
 
@@ -186,6 +187,16 @@ Notes:
 - Timer trait: [rust_runphi/crates/logging/src/timer.rs](../rust_runphi/crates/logging/src/timer.rs)
 - Jailhouse backend: [rust_runphi/crates/backend_jailhouse/src/lib.rs](../rust_runphi/crates/backend_jailhouse/src/lib.rs)
 - Xen backend: [rust_runphi/crates/backend_xen/src/lib.rs](../rust_runphi/crates/backend_xen/src/lib.rs)
+- KVM backend: [rust_runphi/crates/backend_kvm/src/lib.rs](../rust_runphi/crates/backend_kvm/src/lib.rs)
+
+## KVM Backend Documentation
+
+For the complete KVM backend documentation suite, see:
+- [KVM Documentation Overview & Quickstart](backend_kvm_docs/README.md)
+- [Architecture, Lifecycle, and Host Setup](backend_kvm_docs/architecture_and_lifecycle.md)
+- [Config Generator Modules Deep Dive](backend_kvm_docs/config_generator.md)
+- [Container Boot Config Reference (/boot/config.json)](backend_kvm_docs/config_json_reference.md)
+
 
 ## Historical references
 
