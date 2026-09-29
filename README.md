@@ -9,18 +9,19 @@
 
 ## Build runPHI
 
-runPHI ships with two interchangeable backends — Jailhouse and Xen — selected at compile time via a Cargo feature. To build for aarch64:
+runPHI ships with three interchangeable backends — Jailhouse, Xen, and KVM — selected at compile time via a Cargo feature. To build for aarch64:
 
     cd rust_runphi
     ./compile_rust.sh              # default: jailhouse
     ./compile_rust.sh jailhouse
     ./compile_rust.sh xen
+    ./compile_rust.sh kvm
 
 That requires a Rust toolchain. If you do not want to install one, use the Docker script to run those commands in a container.
 
     docker/start_container.sh
 
-The active backend is reported by `runphi --version` (e.g. `runphi 0.5.7 (backend: jailhouse)`).
+The active backend is reported by `runphi --version` (e.g. `runphi 0.5.8 (backend: kvm)`).
 
 
 ## Debug runPHI
@@ -43,7 +44,7 @@ RunPHI is written in Rust and divided into the following crates:
 - logging: a crate used by every other crate to handle logging systematically. It also exposes a `TickSource`-based timer whose platform-specific reader lives in the active backend (e.g. `/dev/mem` MMIO under Jailhouse, `/dev/arm_timer` char device under Xen).
 - liboci_cli: to parse OCI command line arguments into data structures.
 - frontend_to_backend: contains data structures that parse the config.json in /boot/ of the ZICs and other information from the frontend of runPHI into data structures that work as APIs for the backend part, which is hypervisor-dependent. In other words, both the frontend and backend agree on the format of these data structures, and they both use them.
-- backend_{backend_name}: a folder for each backend supported. Currently `backend_jailhouse` and `backend_xen` ship in the same source tree; exactly one is selected at build time via the `jailhouse` (default) or `xen` Cargo feature on the runphi crate. Adding a new backend means adding a new `backend_<name>` crate and a matching feature.
+- backend_{backend_name}: a folder for each backend supported. Currently `backend_jailhouse`, `backend_xen`, and `backend_kvm` ship in the same source tree; exactly one is selected at build time via the `jailhouse` (default), `xen`, or `kvm` Cargo feature on the runphi crate. Adding a new backend means adding a new `backend_<name>` crate and a matching feature.
 The backend usually contains:
 - a config_generator, which drives the generation of configuration files for the partitioned container, relying on a hypervisor-dependent backend
 - resource files: called by the config_generator, managers of the available resources of the hardware platform, and called to create the config file

@@ -94,14 +94,29 @@ pub fn create(
 
     // Execute config_generator script to generate configuration file
     logging::log_message(logging::Level::Info,  format!("Creating config for ID {}", &containerid).as_str());
-    let ic: f2b::ImageConfig = *backend::configGenerator::config_generate(&f2b)?;
+    let ic: f2b::ImageConfig = match backend::configGenerator::config_generate(&f2b) {
+        Ok(cfg) => *cfg,
+        Err(e) => {
+            logging::log_message(
+                logging::Level::Error,
+                &format!("config_generate failed for ID {}: {}", &containerid, e),
+            );
+            return Err(e);
+        }
+    };
 
     // Note: no explicit mount step here. containerd mounts the rootfs
     // before invoking our `create`, and ImageConfig::get_from_file reads
     // /boot/config.json from the already-mounted rootfs.
 
     logging::log_message(logging::Level::Info, format!("Creating guest for ID {}", &containerid).as_str());
-    backend::createguest(&f2b, &ic)?;
+    if let Err(e) = backend::createguest(&f2b, &ic) {
+        logging::log_message(
+            logging::Level::Error,
+            &format!("createguest failed for ID {}: {}", &containerid, e),
+        );
+        return Err(e);
+    }
 
     // Save info on files required by start guest as well as other commands
     // Here the point is that startguest maybe called alone, and it would read info from file

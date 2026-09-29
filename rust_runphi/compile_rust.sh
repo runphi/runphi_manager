@@ -10,9 +10,9 @@ set -euo pipefail
 BACKEND="${1:-jailhouse}"
 
 case "$BACKEND" in
-    jailhouse|xen) ;;
+    jailhouse|xen|kvm) ;;
     *)
-        echo "error: unknown backend '$BACKEND' (expected: jailhouse | xen)" >&2
+        echo "error: unknown backend '$BACKEND' (expected: jailhouse | xen | kvm)" >&2
         exit 1
         ;;
 esac

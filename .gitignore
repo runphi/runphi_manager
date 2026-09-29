@@ -7,3 +7,6 @@ build/*
 .vscode
 rust_runphi/target/*
 .claude/
+rust_runphi/m4_evaluation/*
+rust_runphi/M4_CGROUPS_AND_CYCLICTEST_EXPLAINED.md
+rust_runphi/M4_STEP_BY_STEP_GUIDE.md
