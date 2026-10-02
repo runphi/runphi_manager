@@ -54,7 +54,7 @@ impl BackendConfig {
     <label>root:root</label>
   </seclabel>
   <memoryBacking>
-   <locked\>
+    <locked/>
   </memoryBacking>
   <on_poweroff>destroy</on_poweroff>
   <on_reboot>destroy</on_reboot>
@@ -138,4 +138,63 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     fs::write(&c.xml_file, xml_content)?;
     Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_config() -> BackendConfig {
+        BackendConfig {
+            domain_type: "kvm".to_string(),
+            name: "runphi-test".to_string(),
+            memory_kib: 1024 * 1024,
+            vcpus: 2,
+            cputune_xml: "<cputune>\n    <vcpupin vcpu='0' cpuset='2'/>\n    <vcpupin vcpu='1' cpuset='3'/>\n  </cputune>".to_string(),
+            cpu_xml: "<cpu mode='host-passthrough'/>".to_string(),
+            os_arch: "aarch64".to_string(),
+            os_machine: "virt".to_string(),
+            os_boot_xml: "<kernel>/boot/Image</kernel>\n    <cmdline>console=ttyAMA0</cmdline>".to_string(),
+            features_xml: "<gic version='3'/>".to_string(),
+            devices_xml: vec![
+                "<interface type='user'>\n      <model type='virtio'/>\n    </interface>".to_string(),
+                "<console type='pty'>\n      <target type='serial' port='0'/>\n    </console>".to_string(),
+            ],
+            xml_file: PathBuf::from("/tmp/domain.xml"),
+        }
+    }
+
+    #[test]
+    fn test_to_xml_is_well_formed() {
+        let xml = sample_config().to_xml();
+        let doc = roxmltree::Document::parse(&xml)
+            .unwrap_or_else(|e| panic!("to_xml() produced malformed XML: {}\n{}", e, xml));
+
+        let root = doc.root_element();
+        assert_eq!(root.tag_name().name(), "domain");
+        assert_eq!(root.attribute("type"), Some("kvm"));
+
+        let child_text = |tag: &str| {
+            root.children()
+                .find(|n| n.has_tag_name(tag))
+                .and_then(|n| n.text())
+        };
+        assert_eq!(child_text("name"), Some("runphi-test"));
+        assert_eq!(child_text("memory"), Some("1048576"));
+        assert_eq!(child_text("vcpu"), Some("2"));
+    }
+
+    #[test]
+    fn test_to_xml_memory_backing_locked() {
+        let xml = sample_config().to_xml();
+        assert!(xml.contains("<locked/>"));
+        assert!(!xml.contains("<locked\\>"));
+
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let backing = doc
+            .descendants()
+            .find(|n| n.has_tag_name("memoryBacking"))
+            .expect("missing <memoryBacking>");
+        assert!(backing.children().any(|n| n.has_tag_name("locked")));
+    }
 }
