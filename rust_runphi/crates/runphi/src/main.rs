@@ -8,7 +8,8 @@
 //use clap::{CommandFactory, Parser};
 use clap::Parser;
 use std::error::Error;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use liboci_cli::{GlobalOpts, StandardCmd};
@@ -133,7 +134,36 @@ fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
     //let _app = Opts::command();
 
-    match opts.subcmd {
+    let result = run(opts.subcmd);
+    if let (Err(e), Some(log)) = (&result, &opts.global.log) {
+        if let Err(log_err) = log_runtime_error(log, opts.global.log_format.as_deref(), e.as_ref()) {
+            logging::log_message(
+                logging::Level::Warn,
+                format!("Cannot write the error to {}: {}", log.display(), log_err).as_str(),
+            );
+        }
+    }
+    result
+}
+
+// Write the error of a failed command to the log file the caller passed with
+// --log, in runc's format: containerd's runc shim reads the last error from
+// there to report why the runtime failed. With --log-format json, one JSON
+// object per line; otherwise a logrus text line.
+fn log_runtime_error(path: &Path, format: Option<&str>, err: &dyn Error) -> std::io::Result<()> {
+    let time = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+    let msg = err.to_string();
+    let line = if format == Some("json") {
+        serde_json::json!({"level": "error", "msg": msg, "time": time}).to_string()
+    } else {
+        format!("time={:?} level=error msg={:?}", time, msg)
+    };
+    let mut log = OpenOptions::new().create(true).append(true).open(path)?;
+    writeln!(log, "{}", line)
+}
+
+fn run(subcmd: SubCommand) -> Result<(), Box<dyn Error>> {
+    match subcmd {
         SubCommand::Standard(cmd) => match *cmd {
             // For each OCI command we (a) truncate the container ID to 24
             // chars (Jailhouse limit), (b) decide whether to forward the
@@ -221,4 +251,29 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     //log_timestamp_with_memory_mmap("end main", log_file, mem_address, mem_size).unwrap();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_runtime_error() {
+        let path = std::env::temp_dir().join(format!("runphi-log-{}.json", std::process::id()));
+        let _ = fs::remove_file(&path);
+        let err: Box<dyn Error> = "cannot pin vCPU 0: \"EINVAL\"".into();
+
+        log_runtime_error(&path, Some("json"), err.as_ref()).unwrap();
+        log_runtime_error(&path, None, err.as_ref()).unwrap();
+        let log = fs::read_to_string(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+
+        let lines: Vec<&str> = log.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let json: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(json["level"], "error");
+        assert_eq!(json["msg"], "cannot pin vCPU 0: \"EINVAL\"");
+        assert!(chrono::DateTime::parse_from_rfc3339(json["time"].as_str().unwrap()).is_ok());
+        assert!(lines[1].ends_with(r#"level=error msg="cannot pin vCPU 0: \"EINVAL\"""#));
+    }
 }
