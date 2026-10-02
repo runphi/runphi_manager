@@ -27,7 +27,7 @@ flowchart TB
             disk_mgr["LVM Disk Provisioner (disk.rs)<br/>(lvcreate, mkfs.ext4, mount)"]
             watcher_mgr["PID Watcher Supervisor"]
             irq_mgr["IRQ Steering (irq.rs)"]
-            timer_src["TSC TickSource (timer.rs)"]
+            timer_src["Host counter TickSource (timer.rs)"]
         end
     end
 
@@ -82,6 +82,7 @@ runPHI drives Libvirt via `virsh` rather than spawning raw QEMU processes direct
 ### Hardware Requirements
 - **CPU**: x86_64 with Intel VT-x or AMD-V, or ARM64 (aarch64) with ARM Virtualization Extensions (EL2).
 - **Virtualization Device**: `/dev/kvm` must exist and be accessible.
+- **Kernel**: `CONFIG_RT_GROUP_SCHED` must be off for real-time vCPUs. Pinned vCPUs get `SCHED_FIFO` priority 99 (`<vcpusched>`); with RT group scheduling every new cgroup (libvirt's `machine`, the container's) starts with a real-time budget of 0, and libvirt fails with `Cannot set scheduler parameters ...: Operation not permitted`.
 
 ### Software Dependencies
 Install the required virtualization and storage utilities:
@@ -192,6 +193,13 @@ cd rust_runphi
 ./compile_rust.sh kvm
 ```
 
+The binary must not need a newer glibc than the target has. `compile_rust.sh` links with the host's `aarch64-linux-gnu-gcc` (`.cargo/config.toml`), so on a recent host (e.g. Ubuntu 24.04, glibc 2.39) the result requires `GLIBC_2.39` and does not start on an older target. For a Buildroot target such as the Kria KV260, link against the target's own glibc with the Buildroot toolchain:
+
+```bash
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=<buildroot>/output/host/bin/aarch64-buildroot-linux-gnu-gcc ./compile_rust.sh kvm
+aarch64-linux-gnu-objdump -T target/aarch64-unknown-linux-gnu/release/runphi | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+```
+
 ### System Installation
 
 ```bash
@@ -293,6 +301,7 @@ sequenceDiagram
 - **Domain spawn**: Runs `virsh create /run/runPHI/<id>/domain.xml --paused`, provisioning QEMU in a paused state.
 - **PID discovery**: Finds the QEMU PID via `pgrep -f "qemu-system.*runphi-<id>"`.
 - **cgroups setup**: Calls `cgroups::setup_cgroups(fc, ic, pid)`. Attaches the QEMU PID and applies OCI CPU/memory limits. If setup fails, runPHI immediately runs `virsh destroy` to prevent unconfined VM execution.
+- **vCPU pinning**: Moving QEMU into the container's cpuset cgroup resets the CPU affinity of all its threads (cgroup v1, and v2 before Linux 6.2), undoing libvirt's `<vcpupin>`, so runPHI pins each vCPU thread again with `sched_setaffinity` (QEMU names them `CPU <n>/KVM`). It does not use `virsh vcpupin --live`, which first updates the vCPU's cgroup in libvirt's hierarchy: QEMU has left it, and on systemd hosts the emptied machine scope is removed. A pin outside the container's cpuset (e.g. `--cpuset-cpus`) fails and the domain is destroyed.
 - **Watcher supervision**: Starts the supervisor watcher monitoring `/proc/<qemu_pid>` and writes its PID to `fc.pidfile`.
 - **IRQ steering**: If `steer_irq` is configured, backs up host affinities and updates `/proc/irq/*/smp_affinity_list`.
 - **State recording**: Writes `bundle`, `pidfile`, and `OS` to `/run/runPHI/<id>/`.
@@ -424,34 +433,12 @@ Host hardware interrupts (network adapters, NVMe controllers, USB) targeting rea
 
 ## Monotonic Timer (`timer.rs`)
 
-`src/timer.rs` implements runPHI's `TickSource` trait using the x86 Time Stamp Counter (TSC):
+`src/timer.rs` implements runPHI's `TickSource` trait with the host CPU's own counter, read directly from user space (no `/dev/mem` mapping as in the Jailhouse backend, no kernel module as in the Xen backend):
 
-```rust
-#[inline(always)]
-fn read_ticks(&self) -> u64 {
-    #[cfg(target_arch = "x86_64")]
-    {
-        let low: u32;
-        let high: u32;
-        unsafe {
-            std::arch::asm!(
-                "lfence",
-                "rdtsc",
-                out("eax") low,
-                out("edx") high,
-                options(nomem, nostack, preserves_flags)
-            );
-        }
-        ((high as u64) << 32) | (low as u64)
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        0
-    }
-}
-```
+- **x86_64**: the Time Stamp Counter, `lfence; rdtsc` (`lfence` keeps the read from being executed out of order).
+- **aarch64**: the generic timer's virtual counter, `isb; mrs cntvct_el0`, which Linux lets user space read (the vDSO relies on it). On a KVM host the virtual offset is 0, so it is the same system counter the Jailhouse and Xen backends read, at the same frequency (99.99 MHz on Zynq UltraScale+ / Kria) that `logging::timer` assumes when converting ticks to time.
 
-The `lfence` instruction serializes execution to prevent out-of-order counter reads. On non-x86 targets, `install()` logs a warning and returns `0`.
+On other architectures `read_ticks()` returns `0`.
 
 ---
 
