@@ -58,6 +58,12 @@ pub fn delete(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// Root filesystem of the container: root.path of its OCI config, relative to
+// the bundle unless absolute.
+fn rootfs_path(config: &serde_json::Value, bundle: &Path) -> Option<PathBuf> {
+    config["root"]["path"].as_str().map(|root| bundle.join(root))
+}
+
 // Flow: call config generator to create config file, then call mount (?), create-guest giving the config file, and finally start guest
 pub fn create(
     containerid: &str,
@@ -81,15 +87,8 @@ pub fn create(
     //   OCI Bundle generation
     //TOOD: what is actually the purpose of this???
     if !crundir.join("bundle").exists() {
-        let rootfs_in = f2b.jsonconfig["root"]["path"]
-            .as_str()
+        f2b.mountpoint = rootfs_path(&f2b.jsonconfig, &args.bundle)
             .ok_or_else(|| io::Error::other("Cannot determine rootfs"))?;
-        let rootfs_path = Path::new(rootfs_in);
-        f2b.mountpoint = if rootfs_path.is_absolute() {
-            rootfs_path.to_path_buf()
-        } else {
-            args.bundle.join(rootfs_path)
-        };
     }
 
     // Execute config_generator script to generate configuration file
@@ -134,7 +133,12 @@ pub fn state(container_id: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     //TODO: move this to backend
     let bundle = fs::read_to_string(crundir.join("bundle"))?;
     let pidfile = fs::read_to_string(crundir.join("pidfile"))?;
-    let mountpoint = fs::read_to_string(crundir.join("rootfs"))?;
+    // The rootfs is not stored in crundir: resolve it from the bundle, as create does.
+    let mountpoint = fs::read_to_string(Path::new(&bundle).join("config.json"))
+        .ok()
+        .and_then(|config| serde_json::from_str::<serde_json::Value>(&config).ok())
+        .and_then(|config| rootfs_path(&config, Path::new(&bundle)))
+        .unwrap_or_default();
 
     // Read pid from pidfile or set to 1 if file does not exist
     let pid = if let Ok(pid) = fs::read_to_string(&pidfile) {
@@ -158,7 +162,28 @@ pub fn state(container_id: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
       "created": "{}",
       "owner": ""
     }}"#,
-        container_id, pid, bundle, mountpoint, date
+        container_id, pid, bundle, mountpoint.display(), date
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rootfs_path() {
+        let bundle = Path::new("/run/containerd/bundle");
+        let config = |root: serde_json::Value| serde_json::json!({ "root": root });
+
+        assert_eq!(
+            rootfs_path(&config(serde_json::json!({"path": "rootfs"})), bundle),
+            Some(PathBuf::from("/run/containerd/bundle/rootfs"))
+        );
+        assert_eq!(
+            rootfs_path(&config(serde_json::json!({"path": "/var/lib/rootfs"})), bundle),
+            Some(PathBuf::from("/var/lib/rootfs"))
+        );
+        assert_eq!(rootfs_path(&serde_json::json!({}), bundle), None);
+    }
 }
