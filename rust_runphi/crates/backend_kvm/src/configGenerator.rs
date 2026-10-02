@@ -80,6 +80,24 @@ impl BackendConfig {
     }
 }
 
+/// Kernel console of a Linux guest: the first UART of the machine model,
+/// a PL011 (ttyAMA0) on the aarch64 virt board, a 16550 (ttyS0) on x86.
+pub fn guest_console(os_arch: &str) -> &'static str {
+    match os_arch {
+        "aarch64" => "ttyAMA0",
+        _ => "ttyS0,115200",
+    }
+}
+
+/// libvirt target of the guest serial port: there is no ISA bus on the
+/// aarch64 virt board, whose UART is a system-bus PL011.
+pub fn serial_target_xml(os_arch: &str) -> &'static str {
+    match os_arch {
+        "aarch64" => "<target type='system-serial' port='0'>\n        <model name='pl011'/>\n      </target>",
+        _ => "<target type='isa-serial' port='0'/>",
+    }
+}
+
 pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>, Box<dyn Error>> {
     let mut c = BackendConfig::new();
     c.name = format!("runphi-{}", fc.containerid);
@@ -120,9 +138,10 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     let serial_xml = format!(
         r#"<serial type='pty'>
       <log file='{}' append='on'/>
-      <target type='isa-serial' port='0'/>
+      {}
     </serial>"#,
-        serial_log
+        serial_log,
+        serial_target_xml(&c.os_arch)
     );
     c.devices_xml.push(serial_xml);
 
@@ -155,7 +174,7 @@ mod tests {
             os_arch: "aarch64".to_string(),
             os_machine: "virt".to_string(),
             os_boot_xml: "<kernel>/boot/Image</kernel>\n    <cmdline>console=ttyAMA0</cmdline>".to_string(),
-            features_xml: "<gic version='3'/>".to_string(),
+            features_xml: "<gic version='host'/>".to_string(),
             devices_xml: vec![
                 "<interface type='user'>\n      <model type='virtio'/>\n    </interface>".to_string(),
                 "<console type='pty'>\n      <target type='serial' port='0'/>\n    </console>".to_string(),
@@ -182,6 +201,34 @@ mod tests {
         assert_eq!(child_text("name"), Some("runphi-test"));
         assert_eq!(child_text("memory"), Some("1048576"));
         assert_eq!(child_text("vcpu"), Some("2"));
+    }
+
+    #[test]
+    fn test_guest_console_and_serial_target() {
+        assert_eq!(guest_console("aarch64"), "ttyAMA0");
+        assert_eq!(guest_console("x86_64"), "ttyS0,115200");
+        assert!(serial_target_xml("aarch64").contains("type='system-serial'"));
+        assert!(serial_target_xml("aarch64").contains("<model name='pl011'/>"));
+        assert!(serial_target_xml("x86_64").contains("type='isa-serial'"));
+    }
+
+    #[test]
+    fn test_to_xml_aarch64_serial_is_well_formed() {
+        let mut c = sample_config();
+        c.devices_xml.push(format!(
+            "<serial type='pty'>\n      <log file='/tmp/s.log' append='on'/>\n      {}\n    </serial>",
+            serial_target_xml(&c.os_arch)
+        ));
+        let xml = c.to_xml();
+        let doc = roxmltree::Document::parse(&xml)
+            .unwrap_or_else(|e| panic!("malformed XML: {}\n{}", e, xml));
+        let target = doc
+            .descendants()
+            .find(|n| n.has_tag_name("serial"))
+            .and_then(|s| s.children().find(|n| n.has_tag_name("target")))
+            .expect("missing <serial><target>");
+        assert_eq!(target.attribute("type"), Some("system-serial"));
+        assert!(target.children().any(|n| n.has_tag_name("model") && n.attribute("name") == Some("pl011")));
     }
 
     #[test]

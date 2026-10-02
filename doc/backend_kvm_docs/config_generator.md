@@ -16,7 +16,7 @@ crates/backend_kvm/src/
 │   └── network.rs           # Virtual NIC definitions (SLIRP, Bridge, Libvirt network)
 ├── cgroups.rs               # Host cgroup isolation & resource limits (libcgroups)
 ├── irq.rs                   # Host CPU isolation detection and IRQ affinity steering
-└── timer.rs                 # x86 TSC monotonic timer
+└── timer.rs                 # host counter: TSC (x86_64), CNTVCT_EL0 (aarch64)
 ```
 
 ### The `BackendConfig` Struct
@@ -66,7 +66,7 @@ flowchart TD
    - Multiplies by 1024 to pass KiB to Libvirt.
 3. **Dispatch submodules**: Invokes `cpu::cpuconf`, `boot::bootconf`, `disk::diskconf`, and `network::netconf`.
 4. **Append console devices**:
-   - PTY Serial device: `<serial type='pty'><target type='isa-serial' port='0'/></serial>`
+   - PTY Serial device: `<serial type='pty'>` with the target of the machine's UART (`serial_target_xml`): `<target type='isa-serial' port='0'/>` on x86_64, `<target type='system-serial' port='0'><model name='pl011'/></target>` on aarch64
    - Primary Console: `<console type='pty'><target type='serial' port='0'/></console>`
 5. **Serialize to XML**: Calls `BackendConfig::to_xml()` and writes the resulting XML to disk.
 
@@ -83,7 +83,8 @@ Configures machine architecture, hypervisor mode, vCPU count, and CPU affinities
 | Parameter | `x86_64` | `aarch64` |
 |---|---|---|
 | Machine model (`os_machine`) | `q35` | `virt` |
-| Hardware features (`features_xml`) | `<acpi/>`<br/>`<apic/>` | `<gic version='3'/>` |
+| Hardware features (`features_xml`) | `<acpi/>`<br/>`<apic/>` | With KVM: `<gic version='host'/>` (KVM can only give the guest the host's GIC version: v2 on Zynq UltraScale+ / Kria, v3 on servers)<br/>Without KVM: `<gic version='3'/>` |
+| Guest console (`guest_console`) | `ttyS0,115200` | `ttyAMA0` (PL011) |
 | With `/dev/kvm` available | `domain_type = "kvm"`<br/>`<cpu mode='host-passthrough' check='none'/>` | `domain_type = "kvm"`<br/>`<cpu mode='host-passthrough' check='none'/>` |
 | Without `/dev/kvm` (Fallback) | `domain_type = "qemu"`<br/>`<cpu mode='custom'><model>qemu64</model></cpu>` | `domain_type = "qemu"`<br/>`<cpu mode='custom'><model>max</model></cpu>` |
 
@@ -122,8 +123,10 @@ Configures direct kernel boot parameters based on the guest operating system:
 - `<initrd>`: Path to the initial ramdisk (`ramdisk`, e.g. `/boot/rootfs.cpio.gz`).
 - `<dtb>`: Path to an ARM Device Tree Blob (optional, `dtb`).
 - `<cmdline>`: Kernel boot arguments:
-  - With block disk (`disk_type` is `"file"` or `"lvm"`): `console=ttyS0,115200 root=/dev/vda rw`
-  - With initramfs: `console=ttyS0,115200`
+  - With block disk (`disk_type` is `"file"` or `"lvm"`): `console=<console> root=/dev/vda rw`
+  - With initramfs: `console=<console>`
+
+  where `<console>` is `ttyS0,115200` on x86_64 and `ttyAMA0` on aarch64.
 
 #### Bare-Metal and Unikernels (`os_var != "linux"`)
 For non-Linux payloads (e.g. Zephyr RTOS or ELF binaries):
@@ -275,3 +278,5 @@ Sample Domain XML generated for an x86_64 real-time Linux container with vCPU pi
   </devices>
 </domain>
 ```
+
+On aarch64 (e.g. a Kria KV260) the same container differs in: `<type arch='aarch64' machine='virt'>`, `<cmdline>console=ttyAMA0</cmdline>`, `<features><gic version='host'/></features>`, `<emulator>/usr/bin/qemu-system-aarch64</emulator>` and the serial target `<target type='system-serial' port='0'><model name='pl011'/></target>`.
