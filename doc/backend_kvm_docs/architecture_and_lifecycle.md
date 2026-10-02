@@ -301,6 +301,7 @@ sequenceDiagram
 - **Domain spawn**: Runs `virsh create /run/runPHI/<id>/domain.xml --paused`, provisioning QEMU in a paused state.
 - **PID discovery**: Finds the QEMU PID via `pgrep -f "qemu-system.*runphi-<id>"`.
 - **cgroups setup**: Calls `cgroups::setup_cgroups(fc, ic, pid)`. Attaches the QEMU PID and applies OCI CPU/memory limits. If setup fails, runPHI immediately runs `virsh destroy` to prevent unconfined VM execution.
+- **vCPU pinning**: Moving QEMU into the container's cpuset cgroup resets the CPU affinity of all its threads (cgroup v1, and v2 before Linux 6.2), undoing libvirt's `<vcpupin>`, so runPHI pins each vCPU thread again with `sched_setaffinity` (QEMU names them `CPU <n>/KVM`). It does not use `virsh vcpupin --live`, which first updates the vCPU's cgroup in libvirt's hierarchy: QEMU has left it, and on systemd hosts the emptied machine scope is removed. A pin outside the container's cpuset (e.g. `--cpuset-cpus`) fails and the domain is destroyed.
 - **Watcher supervision**: Starts the supervisor watcher monitoring `/proc/<qemu_pid>` and writes its PID to `fc.pidfile`.
 - **IRQ steering**: If `steer_irq` is configured, backs up host affinities and updates `/proc/irq/*/smp_affinity_list`.
 - **State recording**: Writes `bundle`, `pidfile`, and `OS` to `/run/runPHI/<id>/`.

@@ -1,8 +1,12 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::str;
+
+use nix::sched::{sched_setaffinity, CpuSet};
+use nix::unistd::Pid;
 
 
 #[allow(non_snake_case)]
@@ -40,6 +44,62 @@ fn run_command(cmd: &mut Command) -> Result<Output, Box<dyn Error>> {
         .into());
     }
     Ok(out)
+}
+
+// vCPU index of a QEMU thread named `comm`: libvirt starts QEMU with
+// debug-threads=on, which names the vCPU threads "CPU <n>/KVM" ("CPU <n>/TCG"
+// when emulating).
+fn vcpu_index(comm: &str) -> Option<usize> {
+    let (n, accel) = comm.trim_end().strip_prefix("CPU ")?.split_once('/')?;
+    match accel {
+        "KVM" | "TCG" => n.parse().ok(),
+        _ => None,
+    }
+}
+
+// Thread IDs of the vCPUs of the QEMU process `pid`, by vCPU index.
+fn vcpu_threads(pid: u32) -> Result<HashMap<usize, Pid>, Box<dyn Error>> {
+    let mut threads = HashMap::new();
+    for task in fs::read_dir(format!("/proc/{}/task", pid))? {
+        let task = task?;
+        let tid: i32 = match task.file_name().to_string_lossy().parse() {
+            Ok(tid) => tid,
+            Err(_) => continue,
+        };
+        // A thread may exit while we look at it.
+        if let Ok(comm) = fs::read_to_string(task.path().join("comm")) {
+            if let Some(n) = vcpu_index(&comm) {
+                threads.insert(n, Pid::from_raw(tid));
+            }
+        }
+    }
+    Ok(threads)
+}
+
+// Pin each vCPU thread of the QEMU process `pid` to its pCPU. This sets the
+// thread affinity directly instead of using `virsh vcpupin --live`, which
+// first updates the vCPU's cgroup in libvirt's hierarchy: QEMU has left that
+// hierarchy, and on systemd hosts the machine scope it left is removed, so
+// virsh fails. A pCPU outside the container's cpuset fails with EINVAL.
+fn pin_vcpus(pid: u32, pins: &[f2b::VcpuPin]) -> Result<(), Box<dyn Error>> {
+    if pins.is_empty() {
+        return Ok(());
+    }
+    let threads = vcpu_threads(pid)?;
+    for pin in pins {
+        let tid = threads
+            .get(&pin.vcpu)
+            .ok_or_else(|| format!("no thread for vCPU {} in QEMU process {}", pin.vcpu, pid))?;
+        let mut cpus = CpuSet::new();
+        cpus.set(pin.pcpu)?;
+        sched_setaffinity(*tid, &cpus).map_err(|e| {
+            format!(
+                "cannot pin vCPU {} (thread {}) to CPU {}: {}",
+                pin.vcpu, tid, pin.pcpu, e
+            )
+        })?;
+    }
+    Ok(())
 }
 
 pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
@@ -92,6 +152,22 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         logging::log_message(
             logging::Level::Error,
             &format!("Failed to setup cgroups for container {}: {}", fc.containerid, e),
+        );
+        let _ = Command::new("virsh").arg("destroy").arg(&domain_name).output();
+        return Err(e);
+    }
+
+    // Moving QEMU into the container's cpuset cgroup resets the CPU affinity
+    // of all its threads to the cpuset's CPUs (cgroup v1, and v2 before Linux
+    // 6.2), undoing the <vcpupin> that libvirt applied when it created the
+    // domain. Pin the vCPUs again now that QEMU is in its final cgroup.
+    if let Err(e) = pin_vcpus(pid, &ic.vcpu_pinning) {
+        logging::log_message(
+            logging::Level::Error,
+            &format!(
+                "Failed to pin the vCPUs of container {} (is a CPU outside the container's cpuset?): {}",
+                fc.containerid, e
+            ),
         );
         let _ = Command::new("virsh").arg("destroy").arg(&domain_name).output();
         return Err(e);
@@ -212,4 +288,55 @@ pub fn storeinfo(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), 
 pub fn cleanup(_containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     fs::remove_dir_all(crundir).ok();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nix::sched::sched_getaffinity;
+    use std::sync::mpsc;
+
+    #[test]
+    fn test_vcpu_index() {
+        assert_eq!(vcpu_index("CPU 0/KVM\n"), Some(0));
+        assert_eq!(vcpu_index("CPU 12/TCG\n"), Some(12));
+        assert_eq!(vcpu_index("qemu-system-aar\n"), None);
+        assert_eq!(vcpu_index("CPU 0/vhost\n"), None);
+        assert_eq!(vcpu_index("CPU x/KVM\n"), None);
+    }
+
+    // A thread of this process named like a QEMU vCPU is found and pinned.
+    #[test]
+    fn test_pin_vcpus() {
+        let allowed = sched_getaffinity(Pid::from_raw(0)).unwrap();
+        let cpu = (0..CpuSet::count())
+            .find(|&c| allowed.is_set(c).unwrap())
+            .unwrap();
+
+        let (tid_tx, tid_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        let vcpu = std::thread::Builder::new()
+            .name("CPU 7/KVM".to_string())
+            .spawn(move || {
+                tid_tx.send(nix::unistd::gettid()).unwrap();
+                done_rx.recv().unwrap();
+            })
+            .unwrap();
+        let tid = tid_rx.recv().unwrap();
+        let pid = std::process::id();
+
+        assert_eq!(vcpu_threads(pid).unwrap().get(&7), Some(&tid));
+        pin_vcpus(pid, &[f2b::VcpuPin { vcpu: 7, pcpu: cpu }]).unwrap();
+        let pinned = sched_getaffinity(tid).unwrap();
+        let cpus: Vec<usize> = (0..CpuSet::count())
+            .filter(|&c| pinned.is_set(c).unwrap())
+            .collect();
+        assert_eq!(cpus, vec![cpu]);
+
+        assert!(pin_vcpus(pid, &[f2b::VcpuPin { vcpu: 8, pcpu: cpu }]).is_err());
+        assert!(pin_vcpus(pid, &[]).is_ok());
+
+        done_tx.send(()).unwrap();
+        vcpu.join().unwrap();
+    }
 }
