@@ -236,6 +236,7 @@ mod tests {
             isolcpu: String::new(),
             nohz_full: String::new(),
             steer_irq: None,
+            emulator_pinning: None,
         };
 
         let mut c = configGenerator::BackendConfig::new();

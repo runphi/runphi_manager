@@ -103,7 +103,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     c.name = format!("runphi-{}", fc.containerid);
     c.xml_file = fc.crundir.join("domain.xml");
 
-    let config = match f2b::ImageConfig::get_from_file(&fc.mountpoint) {
+    let mut config = match f2b::ImageConfig::get_from_file(&fc.mountpoint) {
         Ok(cfg) => Box::new(cfg),
         Err(e) => {
             logging::log_message(
@@ -127,6 +127,22 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
             .unwrap_or(default_mb)
     };
     c.memory_kib = mem_mb * 1024;
+
+    // CPUs for QEMU's non-vCPU threads, resolved once for this host and
+    // container and stored back: Some([]) means none. cpuconf turns it into
+    // <emulatorpin>, the cgroup setup and createguest read it from here.
+    let emulator = cpu::emulator_cpus(fc, &config);
+    if let Some(cpus) = &emulator {
+        logging::log_message(
+            logging::Level::Info,
+            &format!(
+                "Emulator threads of container {} on CPUs {}",
+                fc.containerid,
+                cpu::format_cpulist(cpus)
+            ),
+        );
+    }
+    config.emulator_pinning = Some(emulator.map(|cpus| cpus.into_iter().collect()).unwrap_or_default());
 
     // 2. Popolamento sezioni da sottomoduli
     cpu::cpuconf(fc, &config, &mut c)?;

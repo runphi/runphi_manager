@@ -110,7 +110,41 @@ If `vcpus` in `/boot/config.json` exceeds the OCI cgroup quota, runPHI logs a wa
     <vcpupin vcpu='1' cpuset='3'/>
   </cputune>
   ```
-- **Host cgroups (`cgroups.rs`)**: When the user passes `--cpuset-cpus=2,3` to Docker, `cgroups.rs` writes `2,3` into `/sys/fs/cgroup/runphi/<id>/cpuset.cpus`. This confines **the entire QEMU process** (including the main emulator thread and I/O worker threads) to those cores, preventing unpinned helper threads from interfering with other host workloads.
+- **Host cgroups (`cgroups.rs`)**: When the user passes `--cpuset-cpus=2,3` to Docker, `cgroups.rs` writes `2,3` into `/sys/fs/cgroup/runphi/<id>/cpuset.cpus`, together with the CPUs of the emulator threads if those are outside it (next section). Pinned vCPUs must be inside the container's cpuset.
+
+#### Emulator threads (`<emulatorpin>`)
+
+A pinned vCPU runs at `SCHED_FIFO` priority 99. QEMU's other threads (the
+main loop, which handles guest shutdown and every libvirt request, plus the
+I/O and monitor threads) are normal threads: on the CPU of a pinned vCPU they
+only run while that vCPU sleeps. If the vCPU keeps the CPU busy, they do not
+run at all, especially with real-time throttling disabled
+(`sched_rt_runtime_us = -1`). On arm64 this happens when a guest powers off:
+after PSCI `SYSTEM_OFF` the vCPU thread stays busy in `KVM_RUN` until QEMU's
+main loop stops it. If the main loop shares the vCPU's CPU, QEMU never
+handles the shutdown, the domain stays `running`, and `docker stop` hangs in
+`virsh suspend`. This was observed on a Kria KV260 with `--cpuset-cpus 3`
+and vCPU 0 pinned to CPU 3.
+
+So whenever vCPUs are pinned, `config_generate` also places the emulator
+threads (`cpu::emulator_cpus`), unless `emulator_pinning` sets them. The
+choice is the first non-empty set of:
+
+1. the container's CPUs (its cpuset, else all online CPUs) that no vCPU is pinned to, isolated ones excluded;
+2. the same set with isolated ones included;
+3. the host's housekeeping CPUs: online, not pinned, not isolated (`/sys/devices/system/cpu/isolated`, `nohz_full`, `isolcpu`, `nohz_full` of the image);
+4. any online CPU without a pinned vCPU.
+
+The result goes to three places:
+
+- `<emulatorpin cpuset='...'/>` in `<cputune>`;
+- the container's cgroup cpuset, widened to include those CPUs if needed;
+- `createguest`, which pins the threads again after the cgroup move, as it
+  does for the vCPUs.
+
+For example, with `--cpuset-cpus 3`, vCPU 0 pinned to CPU 3 and
+`isolcpus=3` on a 4-CPU host, the emulator threads go to CPUs 0-2 and the
+cgroup cpuset becomes `0-3`. `"emulator_pinning": []` turns this off.
 
 ---
 
@@ -246,6 +280,8 @@ Sample Domain XML generated for an x86_64 real-time Linux container with vCPU pi
   <cputune>
     <vcpupin vcpu='0' cpuset='2'/>
     <vcpupin vcpu='1' cpuset='3'/>
+    <vcpusched vcpus='0,1' scheduler='fifo' priority='99'/>
+    <emulatorpin cpuset='0-1'/>
   </cputune>
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>

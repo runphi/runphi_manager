@@ -302,6 +302,7 @@ sequenceDiagram
 - **PID discovery**: Finds the QEMU PID via `pgrep -f "qemu-system.*runphi-<id>"`.
 - **cgroups setup**: Calls `cgroups::setup_cgroups(fc, ic, pid)`. Attaches the QEMU PID and applies OCI CPU/memory limits. If setup fails, runPHI immediately runs `virsh destroy` to prevent unconfined VM execution.
 - **vCPU pinning**: Moving QEMU into the container's cpuset cgroup resets the CPU affinity of all its threads (cgroup v1, and v2 before Linux 6.2), undoing libvirt's `<vcpupin>`, so runPHI pins each vCPU thread again with `sched_setaffinity` (QEMU names them `CPU <n>/KVM`). It does not use `virsh vcpupin --live`, which first updates the vCPU's cgroup in libvirt's hierarchy: QEMU has left it, and on systemd hosts the emptied machine scope is removed. A pin outside the container's cpuset (e.g. `--cpuset-cpus`) fails and the domain is destroyed.
+- **Emulator pinning**: For the same reason, QEMU's other threads (main loop, I/O, monitor) are pinned again to the emulator CPUs (`<emulatorpin>`, see [config_generator.md](config_generator.md#emulator-threads-emulatorpin)), which keeps them off the CPUs of the `SCHED_FIFO` vCPUs.
 - **Watcher supervision**: Starts the supervisor watcher monitoring `/proc/<qemu_pid>` and writes its PID to `fc.pidfile`.
 - **IRQ steering**: If `steer_irq` is configured, backs up host affinities and updates `/proc/irq/*/smp_affinity_list`.
 - **State recording**: Writes `bundle`, `pidfile`, and `OS` to `/run/runPHI/<id>/`.
@@ -389,7 +390,7 @@ Adding the QEMU main PID automatically confines all current and subsequently spa
 #### 4. Resource Constraints & Fallback (`build_linux_resources`)
 `build_linux_resources` extracts OCI resource limits from `fc.jsonconfig["linux"]["resources"]`:
 - **CPU Quota and Period**: Configured via Docker `--cpu-quota` and `--cpu-period`.
-- **CPU Affinity (`cpuset.cpus`)**: Configured via Docker `--cpuset-cpus` (e.g. `--cpuset-cpus=2,3`).
+- **CPU Affinity (`cpuset.cpus`)**: Configured via Docker `--cpuset-cpus` (e.g. `--cpuset-cpus=2,3`), plus the emulator CPUs when they are outside it (`emulator_pinning`).
 - **Memory Limit**: Deserialized from `resources.memory.limit`.
 - **Memory Fallback**: If `resources.memory` is unset in the OCI spec, but `/boot/config.json` sets `ic.memory > 0`, runPHI builds a `LinuxMemoryBuilder` limit for `ic.memory * 1024 * 1024` bytes and applies it to the cgroup.
 - **OOM Score**: Applies `fc.jsonconfig["process"]["oomScoreAdj"]`.

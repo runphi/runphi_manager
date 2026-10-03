@@ -174,6 +174,13 @@ pub struct ImageConfig {
     // NOTE(lorenzo): Map specifying where redirect IRQs
     #[serde(default, alias = "irq_steering")]
     pub steer_irq: Option<Vec<usize>>,
+
+    // Host CPUs for the hypervisor's own threads (QEMU's main loop, I/O and
+    // monitor threads with the KVM backend), kept off the CPUs of pinned
+    // vCPUs. None (absent): chosen by the backend when vcpu_pinning is set.
+    // Some([]): disabled, those threads stay with the container's cpuset.
+    #[serde(default, alias = "emulatorpin")]
+    pub emulator_pinning: Option<Vec<usize>>,
 }
 impl ImageConfig {
     fn resolve_rootfs_path(mountpoint: &Path, path: &str) -> String {

@@ -102,6 +102,49 @@ fn pin_vcpus(pid: u32, pins: &[f2b::VcpuPin]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// Pin every thread of the QEMU process `pid` that is not a vCPU (main loop,
+// I/O and monitor threads) to `cpus`, as <emulatorpin> asked libvirt to: the
+// cgroup move reset their affinity too. Threads QEMU starts later inherit it
+// from the main thread.
+fn pin_emulator(pid: u32, cpus: &[usize]) -> Result<(), Box<dyn Error>> {
+    if cpus.is_empty() {
+        return Ok(());
+    }
+    let mut set = CpuSet::new();
+    for cpu in cpus {
+        set.set(*cpu)?;
+    }
+    for task in fs::read_dir(format!("/proc/{}/task", pid))? {
+        let task = task?;
+        let tid: i32 = match task.file_name().to_string_lossy().parse() {
+            Ok(tid) => tid,
+            Err(_) => continue,
+        };
+        // A thread may exit while we look at it.
+        let comm = match fs::read_to_string(task.path().join("comm")) {
+            Ok(comm) => comm,
+            Err(_) => continue,
+        };
+        if vcpu_index(&comm).is_some() {
+            continue;
+        }
+        match sched_setaffinity(Pid::from_raw(tid), &set) {
+            Ok(()) | Err(nix::errno::Errno::ESRCH) => {}
+            Err(e) => {
+                return Err(format!(
+                    "cannot pin QEMU thread {} ({}) to CPUs {:?}: {}",
+                    tid,
+                    comm.trim_end(),
+                    cpus,
+                    e
+                )
+                .into())
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
     let domain_xml = fc.crundir.join("domain.xml");
     let domain_name = format!("runphi-{}", fc.containerid);
@@ -168,6 +211,15 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                 "Failed to pin the vCPUs of container {} (is a CPU outside the container's cpuset?): {}",
                 fc.containerid, e
             ),
+        );
+        let _ = Command::new("virsh").arg("destroy").arg(&domain_name).output();
+        return Err(e);
+    }
+    let emulator = ic.emulator_pinning.as_deref().unwrap_or(&[]);
+    if let Err(e) = pin_emulator(pid, emulator) {
+        logging::log_message(
+            logging::Level::Error,
+            &format!("Failed to pin the emulator threads of container {}: {}", fc.containerid, e),
         );
         let _ = Command::new("virsh").arg("destroy").arg(&domain_name).output();
         return Err(e);
@@ -338,5 +390,53 @@ mod tests {
 
         done_tx.send(()).unwrap();
         vcpu.join().unwrap();
+    }
+
+    // Every thread but the vCPUs is pinned to the emulator CPUs.
+    #[test]
+    fn test_pin_emulator() {
+        let allowed = sched_getaffinity(Pid::from_raw(0)).unwrap();
+        let cpus: Vec<usize> = (0..CpuSet::count())
+            .filter(|&c| allowed.is_set(c).unwrap())
+            .collect();
+        if cpus.len() < 2 {
+            return; // needs two CPUs to tell the two sets apart
+        }
+        let (emu_cpu, vcpu_cpu) = (cpus[0], cpus[1]);
+
+        let (tid_tx, tid_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        let spawn = |name: &str, tx: mpsc::Sender<Pid>, rx: mpsc::Receiver<()>| {
+            std::thread::Builder::new()
+                .name(name.to_string())
+                .spawn(move || {
+                    tx.send(nix::unistd::gettid()).unwrap();
+                    rx.recv().unwrap();
+                })
+                .unwrap()
+        };
+        let vcpu = spawn("CPU 5/KVM", tid_tx.clone(), done_rx);
+        let vcpu_tid = tid_rx.recv().unwrap();
+        let (done2_tx, done2_rx) = mpsc::channel::<()>();
+        let worker = spawn("worker", tid_tx, done2_rx);
+        let worker_tid = tid_rx.recv().unwrap();
+
+        let pid = std::process::id();
+        pin_vcpus(pid, &[f2b::VcpuPin { vcpu: 5, pcpu: vcpu_cpu }]).unwrap();
+        pin_emulator(pid, &[emu_cpu]).unwrap();
+        let on = |tid: Pid| -> Vec<usize> {
+            let set = sched_getaffinity(tid).unwrap();
+            (0..CpuSet::count()).filter(|&c| set.is_set(c).unwrap()).collect()
+        };
+        assert_eq!(on(vcpu_tid), vec![vcpu_cpu]);
+        assert_eq!(on(worker_tid), vec![emu_cpu]);
+        assert!(pin_emulator(pid, &[]).is_ok());
+
+        done_tx.send(()).unwrap();
+        done2_tx.send(()).unwrap();
+        vcpu.join().unwrap();
+        worker.join().unwrap();
+        // the test thread itself was pinned too: give it its CPUs back
+        sched_setaffinity(Pid::from_raw(0), &allowed).unwrap();
     }
 }

@@ -20,7 +20,7 @@
 | Hypervisor | KVM via Libvirt (`virsh create/resume/suspend/destroy`). Automatic fallback to QEMU TCG if `/dev/kvm` is absent. |
 | Architectures | `x86_64` (machine `q35`, APIC/ACPI) and `aarch64` (machine `virt`, the host's GIC version: GICv2 on Zynq UltraScale+ / Kria, GICv3 on servers; PL011 console). Tested on a Kria KV260. |
 | cgroups Sandboxing | Uses `libcgroups` (v1/v2) to place the QEMU main PID and helper threads under host cgroups, enforcing OCI CPU quotas, `cpuset`, and memory limits. |
-| CPU Pinning | Direct vCPU-to-pCPU affinity via Libvirt `<cputune>` and `<vcpupin>`, re-applied after the cgroup move (which resets thread affinity on cgroup v1 hosts). |
+| CPU Pinning | Direct vCPU-to-pCPU affinity via Libvirt `<cputune>` and `<vcpupin>`, with QEMU's own threads kept off those CPUs (`<emulatorpin>`), both re-applied after the cgroup move (which resets thread affinity on cgroup v1 hosts). |
 | IRQ Steering | Automatic migration of host IRQs (`/proc/irq/*/smp_affinity_list`) away from isolated cores to housekeeper cores; restored on teardown. |
 | Host Storage | File-backed raw disk images or dynamically provisioned host LVM logical volumes formatted with ext4. |
 | Process Tracking | Supervisor watcher process bridging Libvirt child processes to containerd PID tracking. |

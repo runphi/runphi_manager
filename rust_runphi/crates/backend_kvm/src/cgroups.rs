@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,6 +9,9 @@ use libcgroups::common::{
 use libcgroups::stats::Stats;
 use nix::unistd::Pid;
 use oci_spec::runtime::{LinuxMemoryBuilder, LinuxResources};
+
+use crate::configGenerator::cpu::format_cpulist;
+use crate::irq::parse_cpulist;
 
 const CGROUP_PATH_FILE: &str = "cgroup_path";
 const SYSTEMD_CGROUP_FILE: &str = "systemd_cgroup";
@@ -60,6 +64,35 @@ fn build_linux_resources(
             .limit((ic.memory * 1024 * 1024) as i64)
             .build()?;
         resources.set_memory(Some(mem));
+    }
+
+    // The emulator threads (emulator_pinning, resolved by config_generate)
+    // may be outside the container's cpuset, e.g. on the housekeeping CPUs
+    // when --cpuset-cpus holds only the CPUs of the pinned vCPUs. A cpuset
+    // cgroup cannot run a thread outside its CPUs, so the cgroup gets both;
+    // the vCPU threads stay pinned to their own CPUs.
+    if let Some(emulator) = ic.emulator_pinning.as_ref().filter(|cpus| !cpus.is_empty()) {
+        if let Some(mut cpu) = resources.cpu().clone() {
+            if let Some(cpus) = cpu.cpus().clone().filter(|c| !c.trim().is_empty()) {
+                let mut set: BTreeSet<usize> = parse_cpulist(&cpus).into_iter().collect();
+                set.extend(emulator.iter().copied());
+                let widened = format_cpulist(&set);
+                if parse_cpulist(&widened) != parse_cpulist(&cpus) {
+                    logging::log_message(
+                        logging::Level::Info,
+                        &format!(
+                            "cpuset of container {}: {} -> {} (emulator threads on {})",
+                            fc.containerid,
+                            cpus,
+                            widened,
+                            format_cpulist(&emulator.iter().copied().collect())
+                        ),
+                    );
+                    cpu.set_cpus(Some(widened));
+                    resources.set_cpu(Some(cpu));
+                }
+            }
+        }
     }
 
     Ok(resources)
@@ -314,6 +347,30 @@ mod tests {
         );
         assert!(res.cpu().is_some());
         assert_eq!(res.cpu().as_ref().unwrap().quota(), Some(100000));
+    }
+
+    fn cpuset_of(container_cpus: Option<&str>, emulator: serde_json::Value) -> Option<String> {
+        let mut fc = f2b::FrontendConfig::new();
+        let mut cpu = serde_json::json!({"shares": 1024});
+        if let Some(cpus) = container_cpus {
+            cpu["cpus"] = serde_json::json!(cpus);
+        }
+        fc.jsonconfig = serde_json::json!({"linux": {"resources": {"cpu": cpu}}});
+        let ic: f2b::ImageConfig =
+            serde_json::from_value(serde_json::json!({"emulator_pinning": emulator})).unwrap();
+        let res = build_linux_resources(&fc, &ic).unwrap();
+        res.cpu().as_ref().unwrap().cpus().clone()
+    }
+
+    #[test]
+    fn test_build_linux_resources_cpuset_includes_emulator_cpus() {
+        // --cpuset-cpus 3, emulator threads on the housekeeping CPUs 0-2
+        assert_eq!(cpuset_of(Some("3"), serde_json::json!([0, 1, 2])), Some("0-3".to_string()));
+        // already inside the cpuset: unchanged
+        assert_eq!(cpuset_of(Some("1-3"), serde_json::json!([1])), Some("1-3".to_string()));
+        // no emulator pinning, or no cpuset to widen: unchanged
+        assert_eq!(cpuset_of(Some("3"), serde_json::json!([])), Some("3".to_string()));
+        assert_eq!(cpuset_of(None, serde_json::json!([0, 1, 2])), None);
     }
 
     #[test]

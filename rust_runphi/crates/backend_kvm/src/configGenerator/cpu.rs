@@ -1,4 +1,6 @@
+use std::collections::BTreeSet;
 use std::error::Error;
+use std::fs;
 use std::path::Path;
 
 use crate::configGenerator;
@@ -54,6 +56,102 @@ pub fn machine_conf(
     Ok(())
 }
 
+/// A set of CPUs as a cpulist ("0-2,5"), the format of the kernel, of
+/// libvirt's cpuset attributes and of OCI's linux.resources.cpu.cpus.
+pub fn format_cpulist(cpus: &BTreeSet<usize>) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut iter = cpus.iter().copied().peekable();
+    while let Some(first) = iter.next() {
+        let mut last = first;
+        while iter.peek() == Some(&(last + 1)) {
+            last = iter.next().unwrap();
+        }
+        out.push(if first == last {
+            first.to_string()
+        } else {
+            format!("{}-{}", first, last)
+        });
+    }
+    out.join(",")
+}
+
+fn cpulist(s: &str) -> BTreeSet<usize> {
+    crate::irq::parse_cpulist(s).into_iter().collect()
+}
+
+/// The container's cpuset (`docker run --cpuset-cpus`), if it has one.
+pub fn container_cpus(fc: &f2b::FrontendConfig) -> Option<BTreeSet<usize>> {
+    fc.jsonconfig["linux"]["resources"]["cpu"]["cpus"]
+        .as_str()
+        .map(cpulist)
+        .filter(|cpus| !cpus.is_empty())
+}
+
+/// Where QEMU's emulator threads (everything but the vCPUs: main loop, I/O
+/// and monitor threads) should run, or None to leave them with the vCPUs.
+///
+/// A pinned vCPU runs at SCHED_FIFO 99. An emulator thread sharing its CPU
+/// only runs when that vCPU sleeps, and not at all when the vCPU keeps the
+/// CPU busy, as KVM does on arm64 after a guest's PSCI SYSTEM_OFF: QEMU then
+/// never handles the shutdown nor answers libvirt, and the container cannot
+/// be stopped. So, unless `explicit` (emulator_pinning) says otherwise, the
+/// emulator threads go to the first non-empty of:
+/// 1. the container's CPUs (`allowed`) that no vCPU is pinned to, not isolated;
+/// 2. the same, isolated ones included;
+/// 3. the host's housekeeping CPUs: online, not pinned, not isolated;
+/// 4. any online CPU no vCPU is pinned to.
+/// Without pinned vCPUs nothing changes. `explicit` = [] disables this.
+pub fn choose_emulator_cpus(
+    explicit: Option<&[usize]>,
+    pinned: &BTreeSet<usize>,
+    allowed: &BTreeSet<usize>,
+    online: &BTreeSet<usize>,
+    isolated: &BTreeSet<usize>,
+) -> Option<BTreeSet<usize>> {
+    if let Some(list) = explicit {
+        return if list.is_empty() {
+            None
+        } else {
+            Some(list.iter().copied().collect())
+        };
+    }
+    if pinned.is_empty() {
+        return None;
+    }
+    let free: BTreeSet<usize> = allowed.difference(pinned).copied().collect();
+    let free_hk: BTreeSet<usize> = free.difference(isolated).copied().collect();
+    let host: BTreeSet<usize> = online.difference(pinned).copied().collect();
+    let host_hk: BTreeSet<usize> = host.difference(isolated).copied().collect();
+    [free_hk, free, host_hk, host].into_iter().find(|s| !s.is_empty())
+}
+
+/// emulator_pinning resolved for this host and container (see
+/// choose_emulator_cpus). config_generate stores the result back into the
+/// ImageConfig, so that the domain XML, the cgroup and the thread pinning in
+/// createguest all use the same CPUs.
+pub fn emulator_cpus(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Option<BTreeSet<usize>> {
+    let pinned: BTreeSet<usize> = ic.vcpu_pinning.iter().map(|p| p.pcpu).collect();
+    let online = fs::read_to_string("/sys/devices/system/cpu/online")
+        .map(|s| cpulist(&s))
+        .unwrap_or_default();
+    let allowed = container_cpus(fc).unwrap_or_else(|| online.clone());
+    let isolated: BTreeSet<usize> = crate::irq::get_isolated_cpus(ic).into_iter().collect();
+    let cpus = choose_emulator_cpus(ic.emulator_pinning.as_deref(), &pinned, &allowed, &online, &isolated);
+    if let Some(cpus) = &cpus {
+        if !cpus.is_disjoint(&pinned) {
+            logging::log_message(
+                logging::Level::Warn,
+                &format!(
+                    "emulator_pinning {} shares CPUs with pinned vCPUs ({}): QEMU's main loop can starve behind a SCHED_FIFO vCPU",
+                    format_cpulist(cpus),
+                    format_cpulist(&pinned)
+                ),
+            );
+        }
+    }
+    cpus
+}
+
 pub fn cpuconf(
     fc: &f2b::FrontendConfig,
     ic: &f2b::ImageConfig,
@@ -101,8 +199,15 @@ pub fn cpuconf(
 
     c.vcpus = allocated_vcpus;
 
-    // Set the defined vCPU pinning and apply SCHED_FIFO priority to vCPU
-    if !ic.vcpu_pinning.is_empty() {
+    // Set the defined vCPU pinning and apply SCHED_FIFO priority to vCPU,
+    // and keep QEMU's other threads off those CPUs (emulator_pinning, as
+    // resolved by config_generate).
+    let emulator: Option<BTreeSet<usize>> = ic
+        .emulator_pinning
+        .as_ref()
+        .filter(|cpus| !cpus.is_empty())
+        .map(|cpus| cpus.iter().copied().collect());
+    if !ic.vcpu_pinning.is_empty() || emulator.is_some() {
         let mut cputune = String::from("<cputune>\n");
         for pin in &ic.vcpu_pinning {
             cputune.push_str(&format!(
@@ -112,16 +217,22 @@ pub fn cpuconf(
         }
 
         // Give every pinned vCPU real-time host scheduling priority.
-        let vcpu_list = ic
-            .vcpu_pinning
-            .iter()
-            .map(|p| p.vcpu.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        cputune.push_str(&format!(
-                "    <vcpusched vcpus='{}' scheduler='fifo' priority='99'/>\n",
-                vcpu_list
-        ));
+        if !ic.vcpu_pinning.is_empty() {
+            let vcpu_list = ic
+                .vcpu_pinning
+                .iter()
+                .map(|p| p.vcpu.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            cputune.push_str(&format!(
+                    "    <vcpusched vcpus='{}' scheduler='fifo' priority='99'/>\n",
+                    vcpu_list
+            ));
+        }
+
+        if let Some(cpus) = &emulator {
+            cputune.push_str(&format!("    <emulatorpin cpuset='{}'/>\n", format_cpulist(cpus)));
+        }
 
         cputune.push_str("  </cputune>");
         c.cputune_xml = cputune;
@@ -172,6 +283,92 @@ mod tests {
         assert!(!c.features_xml.contains("gic"));
 
         assert_eq!(conf("x86_64", false).domain_type, "qemu");
+    }
+
+    fn set(cpus: &[usize]) -> BTreeSet<usize> {
+        cpus.iter().copied().collect()
+    }
+
+    #[test]
+    fn test_format_cpulist() {
+        assert_eq!(format_cpulist(&set(&[])), "");
+        assert_eq!(format_cpulist(&set(&[3])), "3");
+        assert_eq!(format_cpulist(&set(&[0, 1, 2])), "0-2");
+        assert_eq!(format_cpulist(&set(&[0, 2, 3, 5])), "0,2-3,5");
+    }
+
+    #[test]
+    fn test_choose_emulator_cpus() {
+        let online = set(&[0, 1, 2, 3]);
+        let none = BTreeSet::new();
+        // No pinned vCPUs: nothing to protect, unless asked explicitly.
+        assert_eq!(choose_emulator_cpus(None, &none, &online, &online, &none), None);
+        assert_eq!(
+            choose_emulator_cpus(Some(&[1]), &none, &online, &online, &none),
+            Some(set(&[1]))
+        );
+        // Explicitly disabled.
+        assert_eq!(choose_emulator_cpus(Some(&[]), &set(&[3]), &online, &online, &none), None);
+        // --cpuset-cpus 3, vCPU on 3, CPU 3 isolated: the host's housekeeping CPUs.
+        assert_eq!(
+            choose_emulator_cpus(None, &set(&[3]), &set(&[3]), &online, &set(&[3])),
+            Some(set(&[0, 1, 2]))
+        );
+        // --cpuset-cpus 2,3, vCPUs on 2 and 3, CPU 3 isolated: 0 and 1.
+        assert_eq!(
+            choose_emulator_cpus(None, &set(&[2, 3]), &set(&[2, 3]), &online, &set(&[3])),
+            Some(set(&[0, 1]))
+        );
+        // --cpuset-cpus 1-3, vCPU on 3, 2-3 isolated: the container's own CPU 1.
+        assert_eq!(
+            choose_emulator_cpus(None, &set(&[3]), &set(&[1, 2, 3]), &online, &set(&[2, 3])),
+            Some(set(&[1]))
+        );
+        // --cpuset-cpus 2,3, vCPU on 3, both isolated: the container's CPU 2.
+        assert_eq!(
+            choose_emulator_cpus(None, &set(&[3]), &set(&[2, 3]), &online, &set(&[2, 3])),
+            Some(set(&[2]))
+        );
+        // Every host CPU isolated: any CPU without a pinned vCPU.
+        assert_eq!(
+            choose_emulator_cpus(None, &set(&[3]), &set(&[3]), &online, &online),
+            Some(set(&[0, 1, 2]))
+        );
+        // Every CPU has a pinned vCPU: nowhere else to go.
+        assert_eq!(choose_emulator_cpus(None, &online, &online, &online, &none), None);
+    }
+
+    fn cputune(json: serde_json::Value) -> String {
+        let ic: f2b::ImageConfig = serde_json::from_value(json).unwrap();
+        let mut c = configGenerator::BackendConfig::new();
+        cpuconf(&f2b::FrontendConfig::new(), &ic, &mut c).unwrap();
+        c.cputune_xml
+    }
+
+    #[test]
+    fn test_cputune_emulatorpin() {
+        let xml = cputune(serde_json::json!({
+            "vcpu_pinning": [{"vcpu": 0, "pcpu": 3}],
+            "emulator_pinning": [0, 1, 2]
+        }));
+        assert!(xml.contains("<vcpupin vcpu='0' cpuset='3'/>"));
+        assert!(xml.contains("<vcpusched vcpus='0' scheduler='fifo' priority='99'/>"));
+        assert!(xml.contains("<emulatorpin cpuset='0-2'/>"));
+        // The element libvirt sees, well-formed.
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let pin = doc.descendants().find(|n| n.has_tag_name("emulatorpin")).unwrap();
+        assert_eq!(pin.attribute("cpuset"), Some("0-2"));
+
+        // Resolved to "none": no emulatorpin; no pinning at all: no cputune.
+        let xml = cputune(serde_json::json!({
+            "vcpu_pinning": [{"vcpu": 0, "pcpu": 3}],
+            "emulator_pinning": []
+        }));
+        assert!(!xml.contains("emulatorpin"));
+        assert_eq!(cputune(serde_json::json!({})), "");
+        // The libvirt-style alias.
+        let ic: f2b::ImageConfig = serde_json::from_value(serde_json::json!({"emulatorpin": [1]})).unwrap();
+        assert_eq!(ic.emulator_pinning, Some(vec![1]));
     }
 
     #[test]
