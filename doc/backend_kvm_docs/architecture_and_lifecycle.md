@@ -434,10 +434,10 @@ Host hardware interrupts (network adapters, NVMe controllers, USB) targeting rea
 
 ## Monotonic Timer (`timer.rs`)
 
-`src/timer.rs` implements runPHI's `TickSource` trait with the host CPU's own counter, read directly from user space (no `/dev/mem` mapping as in the Jailhouse backend, no kernel module as in the Xen backend):
+`src/timer.rs` implements runPHI's `TickSource` trait with the host CPU's own counter, read directly from user space (no kernel module as in the Xen backend):
 
-- **x86_64**: the Time Stamp Counter, `lfence; rdtsc` (`lfence` keeps the read from being executed out of order).
-- **aarch64**: the generic timer's virtual counter, `isb; mrs cntvct_el0`, which Linux lets user space read (the vDSO relies on it). On a KVM host the virtual offset is 0, so it is the same system counter the Jailhouse and Xen backends read, at the same frequency (99.99 MHz on Zynq UltraScale+ / Kria) that `logging::timer` assumes when converting ticks to time.
+- **x86_64**: the Time Stamp Counter, `lfence; rdtsc` (`lfence` keeps the read from being executed out of order). Its frequency is measured against `CLOCK_MONOTONIC` over 20 ms the first time ticks are converted to time (not on every runPHI command).
+- **aarch64**: the generic timer's virtual counter, `isb; mrs cntvct_el0`, which Linux lets user space read (the vDSO relies on it). On a KVM host the virtual offset is 0, so it is the same system counter the Jailhouse and Xen backends read; its frequency is `CNTFRQ_EL0` (99.99 MHz on Zynq UltraScale+ / Kria, 62.5 MHz on QEMU), which `logging::timer` uses to convert ticks to time.
 
 On other architectures `read_ticks()` returns `0`.
 

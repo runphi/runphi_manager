@@ -79,6 +79,7 @@ impl MyTickSource {
 
 impl TickSource for MyTickSource {
     fn read_ticks(&self) -> u64 { /* return a monotonic 64-bit tick count */ }
+    fn frequency_hz(&self) -> u64 { /* ticks per second, e.g. logging::timer::arm_counter_frequency_hz() */ }
 }
 
 // Called once from main().
@@ -87,7 +88,7 @@ pub fn install() -> std::io::Result<()> {
 }
 ```
 
-Reference: `crates/backend_jailhouse/src/timer.rs` (MMIO mmap via `/dev/mem`) and `crates/backend_xen/src/timer.rs` (char-device read of `/dev/arm_timer`).
+Reference: `crates/backend_jailhouse/src/timer.rs` (`CNTVCT_EL0` read from user space) and `crates/backend_xen/src/timer.rs` (char-device read of `/dev/arm_timer`).
 
 **4. Register the backend in `crates/runphi/Cargo.toml`** by adding one optional dependency and one feature:
 

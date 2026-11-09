@@ -13,8 +13,8 @@
 //     43332016151
 //
 // Each read returns the current 64-bit value of CNTPCT_EL0 as a
-// decimal ASCII string terminated by '\n'. The tick frequency is
-// the same arch_timer as on the Jailhouse backend.
+// decimal ASCII string terminated by '\n', at the generic timer's
+// frequency (CNTFRQ_EL0), as on the Jailhouse backend.
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
@@ -73,6 +73,19 @@ impl TickSource for XenTickSource {
             Err(_) => return 0,
         };
         s.trim().parse::<u64>().unwrap_or(0)
+    }
+
+    // The counter runs at the generic timer's frequency, CNTFRQ_EL0.
+    fn frequency_hz(&self) -> u64 {
+        #[cfg(target_arch = "aarch64")]
+        {
+            logging::timer::arm_counter_frequency_hz()
+        }
+
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            0
+        }
     }
 }
 

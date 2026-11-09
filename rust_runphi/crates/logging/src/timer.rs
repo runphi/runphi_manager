@@ -21,6 +21,26 @@ use crate::LOG_PATH;
 // Implementations must be cheap to call and safe to use from any thread.
 pub trait TickSource: Send + Sync {
     fn read_ticks(&self) -> u64;
+    // Ticks per second of read_ticks(), 0 if unknown. Called only to convert
+    // ticks to time, so it may be slow the first time (e.g. a calibration).
+    fn frequency_hz(&self) -> u64;
+}
+
+// Frequency of the ARM generic timer's counter, CNTFRQ_EL0, which Linux lets
+// userspace read: the tick rate of CNTVCT_EL0/CNTPCT_EL0 and of the system
+// counter that drives them (e.g. 99.99 MHz on the ZynqMP, 62.5 MHz on QEMU's
+// virt board).
+#[cfg(target_arch = "aarch64")]
+pub fn arm_counter_frequency_hz() -> u64 {
+    let freq: u64;
+    unsafe {
+        std::arch::asm!(
+            "mrs {}, cntfrq_el0",
+            out(reg) freq,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    freq
 }
 
 static SOURCE: OnceLock<Box<dyn TickSource>> = OnceLock::new();
@@ -70,20 +90,30 @@ pub fn log_batch(entries: &[(u64, &str)]) -> io::Result<()> {
     Ok(())
 }
 
-// arch_timer on the target board (same frequency for both backends).
-pub const TIMER_FREQUENCY_HZ: u64 = 99_990_000;
+// Ticks per second of the installed source, 0 if there is none or its
+// frequency is unknown (the conversions below then return 0, as capture()).
+pub fn frequency_hz() -> u64 {
+    SOURCE.get().map_or(0, |src| src.frequency_hz())
+}
+
+// ticks * units_per_second / frequency, in 128 bits so that it cannot overflow.
+fn ticks_to_units(ticks: u64, frequency_hz: u64, units_per_second: u64) -> u64 {
+    if frequency_hz == 0 {
+        return 0;
+    }
+    (ticks as u128 * units_per_second as u128 / frequency_hz as u128) as u64
+}
 
 pub fn ticks_to_nanoseconds(ticks: u64) -> u64 {
-    // Optimized: 99.99 MHz ≈ 100 MHz → each tick ≈ 10.001 ns
-    ticks.saturating_mul(10001) / 1000
+    ticks_to_units(ticks, frequency_hz(), 1_000_000_000)
 }
 
 pub fn ticks_to_microseconds(ticks: u64) -> u64 {
-    ticks.saturating_mul(10001) / 999_900
+    ticks_to_units(ticks, frequency_hz(), 1_000_000)
 }
 
 pub fn ticks_to_milliseconds(ticks: u64) -> u64 {
-    ticks / 99_990
+    ticks_to_units(ticks, frequency_hz(), 1_000)
 }
 
 pub fn format_elapsed(ticks: u64) -> String {
@@ -109,4 +139,26 @@ pub fn log_elapsed(start: u64, end: u64, operation: &str) -> io::Result<()> {
         end, operation, formatted_time, elapsed_ticks
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ticks_convert_with_the_source_frequency() {
+        // ZynqMP system counter: 99.99 MHz
+        assert_eq!(ticks_to_units(99_990_000, 99_990_000, 1_000_000_000), 1_000_000_000);
+        assert_eq!(ticks_to_units(9_999, 99_990_000, 1_000_000), 100);
+        // QEMU virt (cortex-a53): 62.5 MHz, 16 ns per tick
+        assert_eq!(ticks_to_units(1, 62_500_000, 1_000_000_000), 16);
+        assert_eq!(ticks_to_units(62_500_000, 62_500_000, 1_000), 1_000);
+        // a 3 GHz TSC: a large count does not overflow
+        assert_eq!(ticks_to_units(u64::MAX / 2, 3_000_000_000, 1_000_000_000), u64::MAX / 6);
+    }
+
+    #[test]
+    fn unknown_frequency_converts_to_zero() {
+        assert_eq!(ticks_to_units(12345, 0, 1_000_000_000), 0);
+    }
 }

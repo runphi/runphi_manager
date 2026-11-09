@@ -50,7 +50,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "f2b",
- "libc",
  "logging",
  "nix 0.20.2",
  "psutil",

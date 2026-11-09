@@ -41,7 +41,7 @@ Note that the folder must be populated with other useful files. So you have to h
 RunPHI is written in Rust and divided into the following crates:
 
 - runphi: containing the main function of the program. It is hypervisor-independent. To make the ZICs visible to common tools, OCI calls for containers that are not partitioned (e.g. the Kubernetes pause container, standard docker images) are forwarded to runc_vanilla.
-- logging: a crate used by every other crate to handle logging systematically. It also exposes a `TickSource`-based timer whose platform-specific reader lives in the active backend (e.g. `/dev/mem` MMIO under Jailhouse, `/dev/arm_timer` char device under Xen).
+- logging: a crate used by every other crate to handle logging systematically. It also exposes a `TickSource`-based timer whose platform-specific reader lives in the active backend (e.g. the generic timer's `CNTVCT_EL0` under Jailhouse and KVM, `/dev/arm_timer` char device under Xen).
 - liboci_cli: to parse OCI command line arguments into data structures.
 - frontend_to_backend: contains data structures that parse the config.json in /boot/ of the ZICs and other information from the frontend of runPHI into data structures that work as APIs for the backend part, which is hypervisor-dependent. In other words, both the frontend and backend agree on the format of these data structures, and they both use them.
 - backend_{backend_name}: a folder for each backend supported. Currently `backend_jailhouse`, `backend_xen`, and `backend_kvm` ship in the same source tree; exactly one is selected at build time via the `jailhouse` (default), `xen`, or `kvm` Cargo feature on the runphi crate. Adding a new backend means adding a new `backend_<name>` crate and a matching feature.

@@ -32,7 +32,7 @@ flowchart TB
             direction TB
             backend_api["startguest / stopguest /<br/>createguest / destroyguest /<br/>cleanup / storeinfo"]
             configGenerator["configGenerator<br/>(builds cell/domU/domain config)"]
-            tick_source["TickSource impl<br/>(/dev/mem MMIO | /dev/arm_timer | x86 TSC)"]
+            tick_source["TickSource impl<br/>(CNTVCT_EL0 | /dev/arm_timer | x86 TSC)"]
         end
     end
 
@@ -73,8 +73,8 @@ Walking the diagram:
 | `runphi` | no | Binary. Parses OCI args, decides forwarding, dispatches to the backend, owns `main()`. |
 | `liboci_cli` | no | OCI command-line parsing. Subset of the OCI runtime spec. |
 | `frontend_to_backend` | no | Shared data structures (`FrontendConfig`, `ImageConfig`) used as the API between `runphi` and any backend. Parses `/boot/config.json` from the container rootfs. |
-| `logging` | no | Log file writer; `timer` module with the `TickSource` trait and `u64` tick API. |
-| `backend_jailhouse` | yes | Jailhouse backend: drives `jailhouse cell {create,load,start}`, MMIO mmap of `/dev/mem` for the timer. |
+| `logging` | no | Log file writer; `timer` module with the `TickSource` trait (ticks and their frequency: `CNTFRQ_EL0` on ARM) and `u64` tick API. |
+| `backend_jailhouse` | yes | Jailhouse backend: drives `jailhouse cell {create,load,start}`, reads the generic timer's `CNTVCT_EL0` for the timer. |
 | `backend_xen` | yes | Xen backend: drives `xl create/unpause/destroy`, reads `/dev/arm_timer` for the timer. |
 | `backend_kvm` | yes | KVM backend: drives Libvirt / `virsh` (`domain.xml` create/resume/suspend/destroy), supervisor watcher, dynamic IRQ steering, x86 TSC (`rdtsc`) timer. |
 
