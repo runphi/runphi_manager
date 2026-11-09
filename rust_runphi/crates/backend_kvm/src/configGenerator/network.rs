@@ -237,6 +237,7 @@ mod tests {
             nohz_full: String::new(),
             steer_irq: None,
             emulator_pinning: None,
+            gic_version: String::new(),
         };
 
         let mut c = configGenerator::BackendConfig::new();

@@ -126,8 +126,17 @@ parses it. The `os_var` field selects the kind of guest the Xen backend builds.
 { "os_var": "zephyr", "inmate": "/boot/hello.bin", "net": "no" }
 ```
 
-The backend emits a minimal domU config: `kernel = "<rootfs>/boot/hello.bin"`,
-the cpu/memory stanzas, and (on ARM) `gic_version="v2"`.
+The backend emits a minimal domU config: `kernel = "<rootfs>/boot/hello.bin"`
+and the cpu/memory stanzas.
+
+On ARM, `gic_version` in `/boot/config.json` selects the GIC that Xen emulates
+for the domain: `"v2"`, `"v3"` or `"native"` (the host's), written as
+`gic_version="..."` in the domU config. Without it the config has no
+`gic_version` line and the domain gets the host's GIC, which suits Linux
+guests on any host. A bare-metal image built for one GIC must name it: Zephyr's
+`xenvm` board is GICv2 (`"gic_version": "v2"`), `xenvm//gicv3` is GICv3
+(`"v3"`, or nothing on a GICv3 host). Any other value is refused when the
+container is created.
 
 **Linux domU** (kernel + initramfs):
 
@@ -147,7 +156,7 @@ this the backend additionally emits, on top of the bare-metal stanza:
   Xen PV console so `xl console <id>` shows the boot.
 
 On x86, `gic_version` is never emitted (it is an ARM GIC concept that `xl`
-rejects on x86). A bare-metal container's generated config is unchanged on ARM.
+rejects on x86): runPHI ignores it, with a warning in its log.
 
 ### Root-disk strategies for Linux guests (`disk_type`)
 

@@ -299,6 +299,7 @@ mod tests {
             nohz_full: "3".to_string(),
             steer_irq: Some(vec![0, 2]),
             emulator_pinning: None,
+            gic_version: String::new(),
         };
 
         let isolated = get_isolated_cpus(&ic);

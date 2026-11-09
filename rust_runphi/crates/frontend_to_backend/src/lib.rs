@@ -181,6 +181,13 @@ pub struct ImageConfig {
     // Some([]): disabled, those threads stay with the container's cpuset.
     #[serde(default, alias = "emulatorpin")]
     pub emulator_pinning: Option<Vec<usize>>,
+
+    // ARM, Xen backend: the GIC that Xen emulates for the domain, "v2", "v3"
+    // or "native" (the host's). "" (default): xl's default, the host's GIC,
+    // which suits Linux guests on any host. A bare-metal image built for one
+    // GIC must name it: Zephyr's xenvm board is GICv2, xenvm//gicv3 GICv3.
+    #[serde(default)]
+    pub gic_version: String,
 }
 impl ImageConfig {
     fn resolve_rootfs_path(mountpoint: &Path, path: &str) -> String {

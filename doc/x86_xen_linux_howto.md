@@ -66,7 +66,8 @@ cargo build --release -p runphi --no-default-features --features xen \
   missing timer is **non-fatal** on x86 (a warning is logged and runphi
   continues); boot-time instrumentation is simply disabled.
 - **`gic_version`**: an ARM GIC concept that `xl` rejects on x86 — runPHI emits
-  it only on aarch64 builds, so x86 configs omit it.
+  it only on aarch64 builds, and only when `/boot/config.json` sets it, so x86
+  configs omit it.
 - **PVH**: a Linux guest gets `type = "pvh"` on x86 (omitted on ARM).
 
 ---

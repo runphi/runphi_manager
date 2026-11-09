@@ -172,7 +172,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //The comuniccation between the doms, it should be possible simply by the virtaual network interface
     //------------------------------------------------------------------------------------
     //let _ = communication::communicationconfig(&mut c);
-    let _ = confighelperend(fc, &mut c, &config);
+    confighelperend(fc, &mut c, &config)?;
     logging::log_message(logging::Level::Info,  "Finished config generation".to_string().as_str());
     logging::log_message(logging::Level::Debug,  format!("Config file generated at: {}", c.conffile.display()).as_str());
     logging::log_message(logging::Level::Debug,  format!("Config generation is:\n{}", c.conf).as_str());
@@ -203,18 +203,43 @@ name = \"{}\" \n"
     Ok(())
 }
 
+/// The `gic_version` line of the domain configuration, from `gic_version` in
+/// /boot/config.json: the GIC that Xen emulates for the domain. Empty (the
+/// default): no line, and xl gives the domain the host's GIC ("native").
+fn gic_version_line(ic: &f2b::ImageConfig) -> Result<Option<String>, Box<dyn Error>> {
+    match ic.gic_version.as_str() {
+        "" => Ok(None),
+        v @ ("v2" | "v3" | "native") => Ok(Some(format!("gic_version=\"{}\"\n", v))),
+        v => Err(format!(
+            "invalid gic_version \"{}\" in /boot/config.json (expected \"v2\", \"v3\" or \"native\")",
+            v
+        )
+        .into()),
+    }
+}
+
 fn confighelperend(
     _fc: &f2b::FrontendConfig,
     c: &mut BackendConfig,
-    _ic: &f2b::ImageConfig,
+    ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
 
     // Add the end of the configuration file.
     // gic_version selects the emulated ARM GIC and is meaningful only on ARM;
-    // xl on x86 rejects it, so it must be emitted only for aarch64 builds.
+    // xl on x86 rejects it, so it is emitted only for aarch64 builds.
     // on_crash applies to every architecture.
+    let gic_line = gic_version_line(ic)?;
     #[cfg(target_arch = "aarch64")]
-    c.conf.push_str("gic_version=\"v2\"\n");
+    if let Some(line) = gic_line {
+        c.conf.push_str(&line);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    if gic_line.is_some() {
+        logging::log_message(
+            logging::Level::Warn,
+            "gic_version in /boot/config.json is for ARM only: ignored",
+        );
+    }
     c.conf.push_str("on_crash=\"preserve\"\n");
 
     //create and write the file
@@ -240,4 +265,47 @@ fn log_timestamp(message: &str) -> std::io::Result<()> {
     file.write_all(log_entry.as_bytes())?;
     
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn image_config(gic_version: &str) -> f2b::ImageConfig {
+        let mut ic: f2b::ImageConfig = serde_json::from_str("{}").unwrap();
+        ic.gic_version = gic_version.to_string();
+        ic
+    }
+
+    // Without gic_version in /boot/config.json, no line: xl gives the domain
+    // the host's GIC (it used to be "v2" on every host).
+    #[test]
+    fn gic_version_absent_emits_no_line() {
+        assert_eq!(gic_version_line(&image_config("")).unwrap(), None);
+    }
+
+    #[test]
+    fn gic_version_values_are_passed_to_xl() {
+        for v in ["v2", "v3", "native"] {
+            assert_eq!(
+                gic_version_line(&image_config(v)).unwrap(),
+                Some(format!("gic_version=\"{}\"\n", v))
+            );
+        }
+    }
+
+    // A value xl does not know is refused when the configuration is generated,
+    // with the field named, instead of failing later in `xl create`.
+    #[test]
+    fn gic_version_invalid_is_an_error() {
+        let err = gic_version_line(&image_config("3")).unwrap_err().to_string();
+        assert!(err.contains("invalid gic_version \"3\""), "{}", err);
+    }
+
+    // The field is read from /boot/config.json.
+    #[test]
+    fn gic_version_is_parsed_from_the_boot_config() {
+        let ic: f2b::ImageConfig =
+            serde_json::from_str(r#"{ "os_var": "zephyr", "gic_version": "v3" }"#).unwrap();
+        assert_eq!(ic.gic_version, "v3");
+    }
 }
