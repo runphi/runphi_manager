@@ -6,7 +6,11 @@
 use serde::Deserialize;
 use std::error::Error;
 use std::fs;
+use std::io;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub mod paths;
 
@@ -44,6 +48,63 @@ impl FrontendConfig {
             guestconsole: PathBuf::new(),
             pidfile: PathBuf::new(),
         }
+    }
+
+    // The network namespace of the container's init process, from
+    // linux.namespaces of the OCI config: None if it is not listed (the
+    // host's, e.g. docker run --network host), Some(None) for a new one,
+    // Some(Some(path)) to join the one at path.
+    pub fn network_namespace(&self) -> Option<Option<PathBuf>> {
+        let namespaces = self.jsonconfig["linux"]["namespaces"].as_array()?;
+        let network = namespaces
+            .iter()
+            .find(|ns| ns["type"].as_str() == Some("network"))?;
+        Some(
+            network["path"]
+                .as_str()
+                .filter(|path| !path.is_empty())
+                .map(PathBuf::from),
+        )
+    }
+
+    // Start cmd in the container's network namespace (network_namespace):
+    // for the process runPHI reports as the container's init (the KVM
+    // watcher, caronte). Docker 28 moves the container's network interface
+    // into that process's network namespace; in the host's, where eth0
+    // exists, `docker run` fails with "error renaming interface ... to
+    // "eth0": file exists". The guest's own network is set by
+    // /boot/config.json, not by this namespace.
+    pub fn enter_network_namespace(&self, cmd: &mut Command) -> io::Result<()> {
+        match self.network_namespace() {
+            None => {}
+            Some(None) => unsafe {
+                cmd.pre_exec(|| {
+                    if libc::unshare(libc::CLONE_NEWNET) != 0 {
+                        return Err(io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            },
+            Some(Some(path)) => {
+                // Opened here, before the fork: pre_exec may only make
+                // async-signal-safe calls.
+                let netns = fs::File::open(&path).map_err(|e| {
+                    io::Error::new(
+                        e.kind(),
+                        format!("network namespace {}: {}", path.display(), e),
+                    )
+                })?;
+                unsafe {
+                    cmd.pre_exec(move || {
+                        if libc::setns(netns.as_raw_fd(), libc::CLONE_NEWNET) != 0 {
+                            return Err(io::Error::last_os_error());
+                        }
+                        Ok(())
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -231,5 +292,54 @@ impl ImageConfig {
             config.disk_image = Self::resolve_rootfs_path(mountpoint, &config.disk_image);
         }
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frontend_config(namespaces: serde_json::Value) -> FrontendConfig {
+        let mut fc = FrontendConfig::new();
+        fc.jsonconfig = serde_json::json!({ "linux": { "namespaces": namespaces } });
+        fc
+    }
+
+    // Docker's default network: a new network namespace, no path.
+    #[test]
+    fn network_namespace_new() {
+        let fc = frontend_config(serde_json::json!(
+            [{ "type": "mount" }, { "type": "network" }, { "type": "pid" }]
+        ));
+        assert_eq!(fc.network_namespace(), Some(None));
+    }
+
+    #[test]
+    fn network_namespace_join() {
+        let fc = frontend_config(serde_json::json!(
+            [{ "type": "network", "path": "/var/run/docker/netns/abc" }]
+        ));
+        assert_eq!(
+            fc.network_namespace(),
+            Some(Some(PathBuf::from("/var/run/docker/netns/abc")))
+        );
+    }
+
+    // --network host: no network entry, the host's namespace.
+    #[test]
+    fn network_namespace_host() {
+        let fc = frontend_config(serde_json::json!([{ "type": "mount" }, { "type": "pid" }]));
+        assert_eq!(fc.network_namespace(), None);
+        assert_eq!(FrontendConfig::new().network_namespace(), None);
+    }
+
+    // Joining a namespace that does not exist fails before anything is spawned.
+    #[test]
+    fn enter_missing_network_namespace_fails() {
+        let fc = frontend_config(serde_json::json!(
+            [{ "type": "network", "path": "/nonexistent/netns" }]
+        ));
+        let err = fc.enter_network_namespace(&mut Command::new("true")).unwrap_err();
+        assert!(err.to_string().contains("/nonexistent/netns"), "{}", err);
     }
 }

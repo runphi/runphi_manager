@@ -339,13 +339,15 @@ If runPHI wrote QEMU's PID into `--pid-file`, containerd could not supervise it 
 To fix this, `createguest` spawns a minimal supervisor watcher shell process:
 
 ```rust
-let watcher = Command::new("sh")
+let mut watcher = Command::new("sh");
+watcher
     .arg("-c")
     .arg(format!("while [ -d /proc/{} ]; do sleep 0.2; done", qemu_pid))
     .stdin(Stdio::null())
     .stdout(Stdio::null())
-    .stderr(Stdio::null())
-    .spawn()?;
+    .stderr(Stdio::null());
+fc.enter_network_namespace(&mut watcher)?;
+let watcher = watcher.spawn()?;
 
 let watcher_pid = watcher.id().to_string();
 fs::write(&fc.pidfile, watcher_pid)?;
@@ -357,6 +359,17 @@ fs::write(&fc.pidfile, watcher_pid)?;
 4. containerd supervises the watcher.
 5. When QEMU exits (via internal poweroff or `virsh destroy`), `/proc/<qemu_pid>` disappears.
 6. The watcher loop terminates, sending `SIGCHLD` to containerd, which marks the container as stopped.
+
+The watcher starts in the container's network namespace, as the init process
+of a runc container would: a new one when `linux.namespaces` of the OCI config
+lists `network` without a path (Docker's default network), the one at `path`
+if given, the host's if `network` is not listed (`docker run --network host`).
+Docker 28 moves the container's network interface into that namespace after
+`create`; in the host's, where `eth0` exists, `docker run` fails with `error
+renaming interface ... to "eth0": file exists`. The guest's network does not
+come from it: it is set by `"net"` in `/boot/config.json`. The Xen and
+Jailhouse backends start `caronte`, their init process, the same way
+(`f2b::FrontendConfig::enter_network_namespace`).
 
 ---
 

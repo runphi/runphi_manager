@@ -414,10 +414,12 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         //let caronte_command = format!("echo \"caronte is listening\"");
         let caronte_command = String::new();
         logging::log_message(logging::Level::Debug, format!("Starting caronted with id {}", &fc.containerid).as_str());
-        let start_output = Command::new(CARONTE_BIN)
-            .arg(caronte_command)
-            .arg(&fc.containerid)
-            .spawn()?;
+        // caronte is the container's init for Docker: it runs in the
+        // container's network namespace (f2b::FrontendConfig::enter_network_namespace).
+        let mut caronte = Command::new(CARONTE_BIN);
+        caronte.arg(caronte_command).arg(&fc.containerid);
+        fc.enter_network_namespace(&mut caronte)?;
+        let start_output = caronte.spawn()?;
         let pid = start_output.id();
         std::fs::write(&fc.pidfile, format!("{}", pid))?;        
     
@@ -429,10 +431,10 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
                     "jailhouse cell linux {} {} -d {} -i {} -c \"console ttyAMA0,115200\"",
                     fc.containerid, ic.kernel, ic.dtb, ic.cpio
         );
-        let start_output = Command::new(CARONTE_BIN)
-                    .arg(command)
-                    .arg(&fc.containerid)
-                    .spawn()?;
+        let mut caronte = Command::new(CARONTE_BIN);
+        caronte.arg(command).arg(&fc.containerid);
+        fc.enter_network_namespace(&mut caronte)?;
+        let start_output = caronte.spawn()?;
         let pid = start_output.id();
         std::fs::write(&fc.pidfile, format!("{}", pid))?;
     }

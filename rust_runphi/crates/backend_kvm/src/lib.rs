@@ -231,13 +231,18 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
     //                containerd never knows if qemu got killed or no, so it leaves its state "Up"
     //                By using a watcher program, which dies if qemu is killed by a virsh destroy,
     //                containerd receives correctly the signal when the watcher dies. 
-    let watcher = Command::new("sh")
+    //                The watcher is the container's init for Docker, so it
+    //                runs in the container's network namespace (see
+    //                f2b::FrontendConfig::enter_network_namespace).
+    let mut watcher = Command::new("sh");
+    watcher
         .arg("-c")
         .arg(format!("while [ -d /proc/{} ]; do sleep 0.2; done", qemu_pid))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::null());
+    fc.enter_network_namespace(&mut watcher)?;
+    let watcher = watcher.spawn()?;
 
     let watcher_pid = watcher.id().to_string();
     fs::write(&fc.pidfile, watcher_pid)?;
