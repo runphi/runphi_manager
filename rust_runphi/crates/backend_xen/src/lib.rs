@@ -69,8 +69,13 @@ fn provision_lvm_root(
     let lvname = comps.next().ok_or("malformed lv path")?;
     let vg = comps.next().ok_or("malformed lv path")?;
 
+    // -y: wipe without asking the signatures that an earlier, removed volume
+    // left where the new one is created (e.g. its ext4); without it lvcreate
+    // asks, gets no answer and aborts ("Failed to wipe start of new LV"), as
+    // the KVM backend's lvcreate already does
     run_command(
         Command::new("lvcreate")
+            .arg("-y")
             .arg("-L")
             .arg(format!("{}M", size_mb))
             .arg("-n")
