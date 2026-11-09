@@ -117,7 +117,7 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
      Here can be implemented: hypervisor agnostic real-time schedulability tests, etc.
     */
 
-    let _ = cpu::cpuconf(fc, &mut c, &quota, &period, &cpus);
+    cpu::cpuconf(fc, &mut c, &quota, &period, &cpus)?;
     logging::log_message(logging::Level::Debug,  "Finished cpu config".to_string().as_str());
     //This region of code could be extended through code to retrieve other specific Docker's flags which set MEM limitations
 

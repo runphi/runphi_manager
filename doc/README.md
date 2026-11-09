@@ -75,7 +75,7 @@ Walking the diagram:
 | `frontend_to_backend` | no | Shared data structures (`FrontendConfig`, `ImageConfig`) used as the API between `runphi` and any backend. Parses `/boot/config.json` from the container rootfs. |
 | `logging` | no | Log file writer; `timer` module with the `TickSource` trait (ticks and their frequency: `CNTFRQ_EL0` on ARM) and `u64` tick API. |
 | `backend_jailhouse` | yes | Jailhouse backend: drives `jailhouse cell {create,load,start}`, reads the generic timer's `CNTVCT_EL0` for the timer. |
-| `backend_xen` | yes | Xen backend: drives `xl create/unpause/destroy`, reads `/dev/arm_timer` for the timer. |
+| `backend_xen` | yes | Xen backend: drives `xl create/unpause/destroy`, reads `/dev/arm_timer` for the timer, gives each domain physical CPUs that no other domain and not Dom0 uses (`xl info`, `xl vcpu-list`). |
 | `backend_kvm` | yes | KVM backend: drives Libvirt / `virsh` (`domain.xml` create/resume/suspend/destroy), supervisor watcher, dynamic IRQ steering, x86 TSC (`rdtsc`) timer. |
 
 The three backend crates expose the same seven items (`startguest`, `stopguest`, `destroyguest`, `cleanup`, `createguest`, `storeinfo`, plus the `configGenerator` module). Adding a new backend means producing the same surface. See `rust_runphi/README.md` § *Adding a new hypervisor backend* for the step-by-step recipe.

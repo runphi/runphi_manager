@@ -17,8 +17,8 @@ no cross-compilation.
 
 - Xen is running and Dom0 is Linux x86_64: `sudo xl info` works and
   `sudo xl list` shows `Domain-0`.
-- Xen toolstack present: `xl`. Also `lscpu` (runPHI reads CPU topology) —
-  standard on any Linux.
+- Xen toolstack present: `xl` (runPHI reads the physical CPUs from `xl info`
+  and `xl vcpu-list`).
 - Docker (or containerd) installed and running.
 - A **Xen-PVH-capable** x86_64 kernel `Image` and an **initramfs**
   `rootfs.cpio.gz` containing an `/init`. Section 3 builds both; the kernel
