@@ -6,7 +6,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::env;
 
@@ -40,13 +40,27 @@ impl Logger {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let file = OpenOptions::new()
+        // The log is a debugging aid: a file runphi cannot open (no permission,
+        // a read-only /usr, a directory it could not create) must not stop it
+        // from managing containers, so it then runs without one, and says so
+        // once on stderr (which callers such as the containerd shim do not
+        // parse, unlike stdout).
+        let file = match OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&effective_path)
-                .expect("Failed to open log file");
+                .open(&effective_path) {
+            Ok(file) => Some(file),
+            Err(e) => {
+                warn_on_stderr(&format!(
+                    "cannot open log file {}: {}; logging disabled",
+                    effective_path.display(),
+                    e
+                ));
+                None
+            }
+        };
 
-        Logger { level, file: Some(file), path: Some(effective_path) }
+        Logger { level, file, path: Some(effective_path) }
     }
 
     // Log method, writes to the file if provided
@@ -54,9 +68,17 @@ impl Logger {
         if level <= self.level {
             let log_entry = format!("{:?}: {}\n", level, message);
 
-            // Log to file if file handler is available
+            // Log to file if file handler is available. A write that fails
+            // (e.g. a full disk) disables the file instead of panicking.
             if let Some(file) = self.file.as_mut() {
-                file.write_all(log_entry.as_bytes()).expect("Failed to write to log file");
+                if let Err(e) = file.write_all(log_entry.as_bytes()) {
+                    warn_on_stderr(&format!(
+                        "cannot write to log file {}: {}; logging disabled",
+                        self.path.as_deref().unwrap_or(Path::new("")).display(),
+                        e
+                    ));
+                    self.file = None;
+                }
             }
 
             // Optionally, print to the console (for demo purposes)
@@ -68,6 +90,12 @@ impl Logger {
     pub fn set_level(&mut self, level: Level) {
         self.level = level;
     }
+}
+
+// A warning about the log itself. Ignores a failing stderr, which eprintln!
+// would turn into a panic.
+fn warn_on_stderr(message: &str) {
+    let _ = writeln!(std::io::stderr(), "runphi: warning: {}", message);
 }
 
 // Global logger, initialized later in `main`
@@ -131,3 +159,47 @@ pub fn log_message(level: Level, message: &str) {
 //     // Log after changing the level
 //     log_message(Level::Debug, "This is a debug message, after changing the log level.");
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("runphi-logging-{}-{}", std::process::id(), name))
+    }
+
+    #[test]
+    fn logs_to_the_file() {
+        let path = scratch_path("ok.txt");
+        let mut logger = Logger::new(Level::Info, Some(path.clone()));
+        logger.log(Level::Info, "kept");
+        logger.log(Level::Debug, "below the level");
+        let content = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(content, "Info: kept\n");
+    }
+
+    // A log file that cannot be opened (here its parent is a regular file, so
+    // the directory cannot be created either) leaves runphi without a log
+    // instead of panicking.
+    #[test]
+    fn unopenable_log_file_disables_logging() {
+        let parent = scratch_path("not-a-dir");
+        std::fs::write(&parent, "").unwrap();
+        let mut logger = Logger::new(Level::Info, Some(parent.join("log.txt")));
+        std::fs::remove_file(&parent).unwrap();
+        assert!(logger.file.is_none());
+        logger.log(Level::Error, "dropped");
+    }
+
+    // A write that fails (/dev/full: ENOSPC) disables the file.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failing_write_disables_logging() {
+        let mut logger = Logger::new(Level::Info, Some(PathBuf::from("/dev/full")));
+        assert!(logger.file.is_some());
+        logger.log(Level::Info, "no space");
+        assert!(logger.file.is_none());
+        logger.log(Level::Info, "not tried again");
+    }
+}
