@@ -249,9 +249,11 @@ fn confighelperstart(
     c: &mut BackendConfig,
     ic: &f2b::ImageConfig,
 ) -> Result<(), Box<dyn Error>> {
-    // Write the conf file preamble
+    // Write the conf file preamble. Every guest but Linux (Zephyr, a bare-metal
+    // binary, ...) is a single image that `jailhouse cell load` puts in the cell,
+    // as in createguest(): they all get the same preamble.
 
-    if ic.os_var == "zephyr" {
+    if ic.os_var != "linux" {
 
         logging::log_message(logging::Level::Debug, format!("Starting helper start for id {}", &fc.containerid).as_str());
         // Construct the full path to the TOML file
@@ -341,9 +343,17 @@ fn confighelperend(
     // Compile the .c file to .o
     let compile_status = Command::new("gcc")
         .args([
+            // Jailhouse's headers are GNU C11: in C23, gcc 15's default, `bool`
+            // and `true` are keywords and types.h's `enum { true = 1, ... } bool`
+            // does not compile.
+            "-std=gnu11",
             "-Werror",
             "-Wall",
             "-Wextra",
+            // The signature (JAILHOUSE_CELL_DESC_SIGNATURE, "JHCELL") fills its
+            // 6-byte array without the NUL on purpose; gcc 15 warns about it.
+            // Older gcc ignore the unknown -Wno- option.
+            "-Wno-unterminated-string-initialization",
             "-D__LINUX_COMPILER_TYPES_H",
             "-I/usr/share/runPHI/include",   // Specify the absolute include path
             "-c",                            // Compile without linking

@@ -84,6 +84,11 @@ pub fn devconfig(c: &mut configGenerator::BackendConfig) -> Result<(), Box<dyn E
     let mut result = String::new();
     for device in devs {
         if let Some(template_name) = device.as_str() {
+            // Without network the cell has no PCI device (pci_devices[0] above):
+            // leave the platform's ivshmem devices out.
+            if c.net == "none" && template_name.starts_with("PCI_DEVICE") {
+                continue;
+            }
             // Get the template from the map
             let mut template = templates_map.get(template_name)
                 .ok_or_else(|| format!("Unknown template: {}", template_name))?

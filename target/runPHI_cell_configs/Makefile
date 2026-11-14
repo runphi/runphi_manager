@@ -2,7 +2,7 @@
 
 CC = gcc
 OBJCOPY = objcopy
-CFLAGS = -Werror -Wall -Wextra -D__LINUX_COMPILER_TYPES_H -I./include
+CFLAGS = -std=gnu11 -Werror -Wall -Wextra -Wno-unterminated-string-initialization -D__LINUX_COMPILER_TYPES_H -I./include
 OBJCOPYFLAGS = -O binary --remove-section=.note.gnu.property
 
 # List all .c files in the current directory
