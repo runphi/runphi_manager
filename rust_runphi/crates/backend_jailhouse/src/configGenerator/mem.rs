@@ -297,3 +297,56 @@ pub fn memconfig(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // kria_platform_info.toml's TCM sections, which name core 0's TCMs
+    const PLATFORM: &str = r#"
+[mem_regions]
+regions = ["UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
+[UART_TEMPLATE]
+phys_start = "0xff010000"
+virt_start = "0xff010000"
+size = "0x1000"
+[TCMA_TEMPLATE]
+phys_start = "0xffe00000"
+virt_start = "0xffe00000"
+size = "0x00010000"
+[TCMB_TEMPLATE]
+phys_start = "0xffe20000"
+virt_start = "0xffe20000"
+size = "0x00010000"
+[RAM_TEMPLATE]
+phys_start = "0x4f000000"
+virt_start = "0"
+size = "0x8000000"
+"#;
+
+    fn core1() -> rpu::RcpuInfo {
+        rpu::RcpuInfo { id: 1, tcma: 0xffe90000, tcmb: 0xffeb0000, tcm_size: 0x10000, ddr_start: 0x3ad00000, ddr_size: 0x4000000 }
+    }
+
+    #[test]
+    fn r5_core1_gets_its_own_tcm_and_ddr() {
+        let config: Value = PLATFORM.parse().unwrap();
+        let r = core1();
+        let regions = cell_regions(&config, true, false).unwrap();
+        let out = generate_config(&config, &regions, &hex(r.ddr_size), "", &hex(r.ddr_start), &hex(r.ddr_start), Some(&r)).unwrap();
+        assert!(out.contains("TCM 1-A") && out.contains("TCM 1-B"), "{}", out);
+        assert!(out.contains(".phys_start = 0xffe90000") && out.contains(".phys_start = 0xffeb0000"), "{}", out);
+        assert!(!out.contains("0xffe00000") && !out.contains("0xffe20000"), "core 0's TCM in a core 1 cell: {}", out);
+        assert!(out.contains(".phys_start = 0x3ad00000") && out.contains(".size = 0x4000000"), "{}", out);
+    }
+
+    #[test]
+    fn a53_cell_gets_no_tcm() {
+        let config: Value = PLATFORM.parse().unwrap();
+        let regions = cell_regions(&config, true, true).unwrap();
+        assert!(!regions.iter().any(|r| r.starts_with("TCM")));
+        assert_eq!(count_mem_regions(&regions), 3);
+        let out = generate_config(&config, &regions, "0x4000000", "", "0x4f000000", "0x4f000000", None).unwrap();
+        assert!(!out.contains("TCM") && out.contains(".phys_start = 0x4f000000"), "{}", out);
+    }
+}

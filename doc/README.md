@@ -197,7 +197,11 @@ installed as `/usr/share/runPHI/platform_info.toml` and `state.toml`:
 - an A53 cell gets the container's CPU quota (default 1 CPU) of the root
   cell's CPUs and its memory limit (default 64 MB) of the free segments in
   `state.toml`; `"net": "yes"` adds one of the free ivshmem devices
-  (`free_pci_devices_bdf`), `"none"` none
+  (`free_pci_devices_bdf`) and its INTx, which the hypervisor raises at
+  `32 + vpci_irq_base + pin - 1` (pin = device + 1): with `vpci_irq_base` in
+  `[jailhouse_preamble]` (the Kria: 108, so IRQ 141 and 142) the cell gets
+  that base and that interrupt, otherwise the fixed `ivshmem_pin`; `"none"`
+  gives neither
 - `"rpu_req": true` puts an R5 ELF (`inmate`) on a remote core (Omnivisor
   fork). On a platform whose `platform_info.toml` describes the cores
   (`[rcpu.<id>]`: TCMs and DDR region, e.g. the Kria's), the core is the one

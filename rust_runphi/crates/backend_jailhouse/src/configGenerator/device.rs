@@ -18,6 +18,14 @@ use crate::configGenerator::templates::*;
 
 use f2b::paths::WORKPATH;
 
+// The interrupt that the hypervisor raises for the INTx of ivshmem device
+// 00:<device>.0 of a cell (hypervisor/arch/arm-common/ivshmem.c: 32 +
+// vpci_irq_base + pin - 1, the pin rotated by the device number)
+pub fn ivshmem_intx(vpci_irq_base: u32, device: u32) -> u32 {
+    let pin = (device & 0x3) + 1;
+    32 + vpci_irq_base + pin - 1
+}
+
 pub fn devconfig(c: &mut configGenerator::BackendConfig) -> Result<(), Box<dyn Error>> {
 
     // Insert line into the config file
@@ -100,6 +108,25 @@ pub fn devconfig(c: &mut configGenerator::BackendConfig) -> Result<(), Box<dyn E
 
             // Substitute common fields
             template = template.replace("{ivshmem_bdf}", &bdf_used.to_string());
+            // With vpci_irq_base the cell gets the INTx of its own ivshmem device,
+            // as the hypervisor raises it: 32 + vpci_irq_base + pin - 1, the pin
+            // rotated by the device number (pin = (device & 3) + 1); none without
+            // network. ivshmem_pin of the platform file is the fallback.
+            if let Some(base) = c.vpci_irq_base {
+                if c.net == "none" {
+                    template = template.replace("(1 << ({ivshmem_pin} - 128))", "0");
+                } else {
+                    let irq = ivshmem_intx(base, bdf_used as u32);
+                    if !(128..160).contains(&irq) {
+                        return Err(format!(
+                            "ivshmem INTx {} (vpci_irq_base {}, device {}) is outside pins 128-159 of the irqchip template",
+                            irq, base, bdf_used
+                        )
+                        .into());
+                    }
+                    template = template.replace("{ivshmem_pin}", &irq.to_string());
+                }
+            }
             // AGGIUSTARE PER NON PRENDERE ANCHE IL TEMPLATE DI DEVICE SE C.NET=NONE
             // Apply custom fields from TOML for the current device template
             if let Some(params) = config.get(template_name) {
@@ -158,4 +185,19 @@ fn generate_mem_region(template: &str, params: &str) -> String {
     }
 
     filled_template
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ivshmem_intx;
+
+    #[test]
+    fn intx_of_the_kria_devices() {
+        // kria_platform_info.toml: vpci_irq_base 108
+        assert_eq!(ivshmem_intx(108, 1), 141);
+        assert_eq!(ivshmem_intx(108, 2), 142);
+        // the root cell's own (vpci_irq_base 136 - 32)
+        assert_eq!(ivshmem_intx(104, 1), 137);
+        assert_eq!(ivshmem_intx(104, 2), 138);
+    }
 }

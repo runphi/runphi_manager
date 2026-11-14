@@ -265,6 +265,8 @@ struct {
 		.num_pci_devices = ARRAY_SIZE(config.pci_devices),
 		.num_stream_ids = ARRAY_SIZE(config.stream_ids),
 
+		.vpci_irq_base = {vpci_irq_base},
+
 		.console = {
 			.address = 0xff010000,
 			.type = JAILHOUSE_CON_TYPE_XUARTPS,

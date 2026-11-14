@@ -54,6 +54,8 @@ pub struct BackendConfig {
     pub rcpu: Option<rpu::RcpuInfo>,
     // the memory the cell takes from the free segments (start, end)
     pub memory: Option<(u64, u64)>,
+    // vpci_irq_base of [jailhouse_preamble] in platform_info.toml, if any
+    pub vpci_irq_base: Option<u32>,
 }
 
 impl Default for BackendConfig {
@@ -78,6 +80,7 @@ impl BackendConfig {
             rcpu_layout: false,
             rcpu: None,
             memory: None,
+            vpci_irq_base: None,
         }
     }
 }
@@ -300,8 +303,26 @@ fn confighelperstart(
                 _ => return Err(format!("Unexpected preamble value: {}", preamble).into()),
             };
 
+            // The hypervisor raises the INTx of the cell's ivshmem device at
+            // 32 + vpci_irq_base + pin - 1: a platform that gives the base gets
+            // it in the cell (and devconfig lets that interrupt through); 0
+            // otherwise, as before
+            c.vpci_irq_base = match parsed_toml
+                .get("jailhouse_preamble")
+                .and_then(|section| section.get("vpci_irq_base"))
+            {
+                Some(v) => Some(
+                    v.as_str()
+                        .ok_or("vpci_irq_base in [jailhouse_preamble] must be a string")?
+                        .trim()
+                        .parse::<u32>()?,
+                ),
+                None => None,
+            };
             // Replace `{containerid}` placeholder with `fc.containerid`
-            let filled_template = selected_template.replace("{containerid}", &fc.containerid);
+            let filled_template = selected_template
+                .replace("{containerid}", &fc.containerid)
+                .replace("{vpci_irq_base}", &c.vpci_irq_base.unwrap_or(0).to_string());
             //logging::log_message(logging::Level::Debug, format!("Replacement in template for id {}", &fc.containerid).as_str());
 
             // Append the filled template to `c.conf`

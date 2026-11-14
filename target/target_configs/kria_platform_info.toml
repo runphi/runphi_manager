@@ -1,8 +1,14 @@
 [mem_regions]
 regions = ["IVSHMEM_TEMPLATE", "UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
 
+# vpci_irq_base: the hypervisor raises the INTx of a cell's ivshmem device at
+# 32 + vpci_irq_base + pin - 1, pin = (device & 3) + 1: 00:01.0 -> 141,
+# 00:02.0 -> 142 (as the fork's zynqmp-kv260-linux-demo.cell; the root cell's
+# own are 137 and 138). runPHI lets the cell's interrupt through and ignores
+# ivshmem_pin below.
 [jailhouse_preamble]
 preamble = "ULTRASCALE_PREAMBLE"
+vpci_irq_base = "108"
 
 [IVSHMEM_TEMPLATE]
 address = "0x07e000000" #"0x060000000" was before
