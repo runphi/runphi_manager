@@ -22,8 +22,11 @@ phys_start = "0xffe20000"
 virt_start = "0xffe20000"
 size = "0x00010000"
 
+# The RAM of an A53 cell: phys_start and size come from the free segments of
+# state.toml (runphi@4f000000 in the device tree, 256 MB); an R5 cell gets its
+# core's DDR region instead (below)
 [RAM_TEMPLATE]
-phys_start = "0x3ed00000"
+phys_start = "0x4f000000"
 virt_start = "0"
 size = "0x8000000"
 
@@ -40,3 +43,22 @@ ivshmem_pin = "146"
 
 [PCI_DEVICE_TEMPLATE]
 ivshmem_bdf = "1"
+
+# The R5 cores: their TCMs and their DDR region, the memory-region of the core
+# in the device tree (rproc@3ed00000, rproc@3ad00000), which is where remoteproc
+# loads their programs and so where these are linked. An R5 cell gets its
+# core's TCMs and DDR region, chosen from the addresses of its ELF; an A53 cell
+# gets neither.
+[rcpu.0]
+tcma = "0xffe00000"
+tcmb = "0xffe20000"
+tcm_size = "0x10000"
+ddr_start = "0x3ed00000"
+ddr_size = "0x8000000"
+
+[rcpu.1]
+tcma = "0xffe90000"
+tcmb = "0xffeb0000"
+tcm_size = "0x10000"
+ddr_start = "0x3ad00000"
+ddr_size = "0x4000000"

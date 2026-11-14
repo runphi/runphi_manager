@@ -48,6 +48,12 @@ pub struct BackendConfig {
     pub bdf: Vec<i8>,
     pub rcpus: Vec<i8>,
     pub used_rcpus: Vec<i8>,
+    // platform_info.toml describes the R5 cores ([rcpu.<id>])
+    pub rcpu_layout: bool,
+    // the R5 core of an R5 cell, on such a platform
+    pub rcpu: Option<rpu::RcpuInfo>,
+    // the memory the cell takes from the free segments (start, end)
+    pub memory: Option<(u64, u64)>,
 }
 
 impl Default for BackendConfig {
@@ -69,11 +75,16 @@ impl BackendConfig {
             bdf: Vec::new(),
             rcpus: Vec::new(),
             used_rcpus: Vec::new(),
+            rcpu_layout: false,
+            rcpu: None,
+            memory: None,
         }
     }
 }
 
-//TODO: error handling across this function is a box of shit, handle it
+// Every step's error is returned: a configuration that is not complete would
+// not compile (or would describe another cell), and the container must not be
+// created. The state (state.toml) is only written once the cell file is built.
 pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>, Box<dyn Error>> {
     logging::log_message(logging::Level::Debug, format!("Starting config generator for id {}", &fc.containerid).as_str());
 
@@ -87,6 +98,12 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     logging::log_message(logging::Level::Debug, format!("Reading the config.json inside the container for id {}", &fc.containerid).as_str());
     let mut config = Box::new(f2b::ImageConfig::get_from_file(&fc.mountpoint)?);
     logging::log_message(logging::Level::Debug, format!("The mountpoint for the container with id {} is {}", &fc.containerid, fc.mountpoint.display()).as_str());
+    // A Linux guest needs a cell configuration for "jailhouse cell linux",
+    // which this backend does not generate yet
+    if config.os_var == "linux" {
+        return Err("os_var \"linux\": Linux cells are not implemented in backend_jailhouse".into());
+    }
+
     //Clone the value of config.net (from the internal .json) to c.net
     c.net = config.net.clone();
 
@@ -104,9 +121,14 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     c.rcpus = rcpus;
     //c.preamble = preamble;
 
+    // The R5 cores of the platform, if platform_info.toml describes them
+    let platform: Value = fs::read_to_string(Path::new(WORKPATH).join(CONFIG_FILE))?.parse()?;
+    let platform_rcpus = rpu::platform_rcpus(&platform)?;
+    c.rcpu_layout = !platform_rcpus.is_empty();
+
     logging::log_message(logging::Level::Debug, format!("Config helper start for id {}", &fc.containerid).as_str());
     //let start = timer::capture(); //TIMELINE
-    let _ = confighelperstart(fc, &mut c, &config);
+    confighelperstart(fc, &mut c, &config)?;
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "helperstart")?;
 
@@ -143,16 +165,29 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //let start = timer::capture(); //TIMELINE
     //If rpu_req is true we are requesting RPUs and not CPUs
     //c.rpu_req=true; //FOR TESTING PURPOSES ALWAYS ALLOCATE RPUs, COMMENT IN THE FINAL CODE
-    if c.rpu_req{
-        let rpus=cpus;
-        cpus=0.0;
-        let _ = cpu::cpuconf(fc, &mut c, &quota, &period, &cpus);
-        let _ = rpu::rpuconf(&mut c, &rpus);
+    if c.rpu_req {
+        // One R5 core: the one whose memory holds the program (remoteproc loads
+        // it at its link address), or the first free core if the program only
+        // uses the TCMs or the platform does not describe the cores
+        cpus = 0.0;
+        cpu::cpuconf(fc, &mut c, &quota, &period, &cpus)?;
+        let elf_core = if c.rcpu_layout {
+            rpu::rcpu_for_elf(Path::new(&config.inmate), &platform_rcpus)?
+        } else {
+            None
+        };
+        let rcpu = match elf_core {
+            Some(id) => id,
+            None => *c.rcpus.first().ok_or("no free R5 core")?,
+        };
+        rpu::rpuconf(&mut c, rcpu)?;
+        c.rcpu = platform_rcpus.iter().find(|r| r.id == rcpu).cloned();
+        if c.rcpu_layout && c.rcpu.is_none() {
+            return Err(format!("R5 core {} is not described in platform_info.toml", rcpu).into());
+        }
     } else {
-        //let rpus=0.0;
-        let _ = cpu::cpuconf(fc, &mut c, &quota, &period, &cpus);
-        //let _ = rpu::rpuconf(&mut c, &rpus);
-    }    
+        cpu::cpuconf(fc, &mut c, &quota, &period, &cpus)?;
+    }
     //logging::log_message(logging::Level::Debug, format!("\nconfiguration after cpuconf is  {}", c.conf).as_str());
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "CPU Configuration")?;
@@ -170,8 +205,6 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     //Convert the value parsed to a hexadecimal String
     let mem_request_hex = format!("0x{:x}", mem_request);
 
-    //Save the value of segments 
-    let segments_before=c.segments.clone();
     //Save the value of the bdf we use
     let bdf_used = if c.net != "none" {
         c.bdf.iter().min().cloned()
@@ -183,14 +216,14 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
     logging::log_message(logging::Level::Debug, format!("Configuring memory for id {}", &fc.containerid).as_str());
     
     //let start = timer::capture(); //TIMELINE
-    let _ = mem::memconfig(&mut c, &mem_request_hex);
+    mem::memconfig(&mut c, &mem_request_hex)?;
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Memory Configuration")?;
 
     logging::log_message(logging::Level::Debug, format!("Configuring Device for id {}", &fc.containerid).as_str());
     
     //let start = timer::capture(); //TIMELINE
-    let _ = device::devconfig(&mut c);
+    device::devconfig(&mut c)?;
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Device Configuration")?;
 
@@ -214,33 +247,20 @@ pub fn config_generate(fc: &f2b::FrontendConfig) -> Result<Box<f2b::ImageConfig>
 
     //let _ = communication::communicationconfig(&mut c); //communication è stato incluso direttamente nel preamble
 
-    // Call save_state and log the result
-    //let start = timer::capture(); //TIMELINE
-    match save_state(
+    logging::log_message(logging::Level::Trace, format!("\nactual configuration is  {}", c.conf).as_str());
+
+    // Build the cell file, then take the resources in state.toml
+    confighelperend(fc, &mut c, &config)?;
+    save_state(
         &fc.containerid,
         &c.segments,
-        &segments_before,
+        c.memory,
         &c.rcpus,
         bdf_used,
         &c.used_rcpus,
-    ) {
-        Ok(_) => logging::log_message(logging::Level::Debug, format!("State saved successfully for id {}", &fc.containerid).as_str()),
-        Err(_e) => logging::log_message(logging::Level::Debug, format!("Failed to save state for id {}", &fc.containerid).as_str()),
-    }
-    //let end = timer::capture(); //TIMELINE
-    //timer::log_elapsed(start, end, "Save state")?;
+    )?;
+    logging::log_message(logging::Level::Debug, format!("State saved successfully for id {}", &fc.containerid).as_str());
 
-    //logging::log_message(logging::Level::Debug, format!("Finishing configuration for id {}", &fc.containerid).as_str());
-    logging::log_message(logging::Level::Trace, format!("\nactual configuration is  {}", c.conf).as_str());
-
-    //let end = timer::capture(); //TIMELINE
-    //timer::log_elapsed(start, end, "Config Generation")?;
-
-    //let start = timer::capture(); //TIMELINE
-    let _ = confighelperend(fc, &mut c, &config);
-    //let end = timer::capture(); //TIMELINE
-    //timer::log_elapsed(start, end, "Compilation")?;
-    
     Ok(config)
 }
 
@@ -361,11 +381,22 @@ fn confighelperend(
             "-o",
             obj_file_path.to_str().unwrap(),
         ])
-        .status()?;
+        .output()?;
 
-    if !compile_status.success() {
-        logging::log_message(logging::Level::Error, "Compilation failed!!!");
-        return Err("Compilation failed".into());
+    if !compile_status.status.success() {
+        // gcc's first errors, the rest is in the log
+        let stderr = String::from_utf8_lossy(&compile_status.stderr);
+        logging::log_message(
+            logging::Level::Error,
+            &format!("Compilation of the cell configuration failed:\n{}\n{}", stderr, c.conf),
+        );
+        let first: Vec<&str> = stderr.lines().filter(|l| l.contains("error")).take(3).collect();
+        return Err(format!(
+            "the cell configuration of {} does not compile: {}",
+            fc.containerid,
+            first.join("; ")
+        )
+        .into());
     }
 
     // Convert the .o file to .cell directly in fc.crundir
@@ -429,7 +460,7 @@ fn retrieve_state() -> Result<StateSnapshot, Box<dyn std::error::Error>> {
 fn save_state(
     fc_containerid: &str,
     c_segments: &[String],
-    segments_before: &[String],
+    memory: Option<(u64, u64)>,
     c_rcpus: &[i8],
     bdf_used: Option<i8>,
     c_used_rcpus: &[i8],
@@ -468,31 +499,12 @@ fn save_state(
     let new_container_section = {
         let mut container_data = Map::new();
 
-        // Parse start and end addresses from `segments_before` and `c_segments`
-        let (start_before, _end_before) = {
-            let parts: Vec<&str> = segments_before[0].split(", ").collect();
-            (
-                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16)?,
-                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)?,
-            )
+        // The memory taken from the free segments ("none": an R5 cell, whose
+        // memory is its core's region)
+        let used_memory = match memory {
+            Some((start, end)) => format!("0x{:x}, 0x{:x}", start, end),
+            None => "none".to_string(),
         };
-
-        let (start_after, _end_after) = {
-            let parts: Vec<&str> = c_segments[0].split(", ").collect();
-            (
-                u64::from_str_radix(parts[0].trim_start_matches("0x"), 16)?,
-                u64::from_str_radix(parts[1].trim_start_matches("0x"), 16)?,
-            )
-        };
-
-        // Calculate the used memory range (segments_before - c_segments)
-        let used_start = start_before;
-        let used_end = start_after;
-        //logging::log_message(logging::Level::Debug, &format!("Used memory start: 0x{:x}, end: 0x{:x}", used_start, used_end));
-
-        // Format the result as a memory segment string
-        let used_memory = format!("0x{:x}, 0x{:x}", used_start, used_end);
-        //logging::log_message(logging::Level::Debug, &format!("Final used_memory string: {:?}", used_memory));
 
         // Insert into container_data
         container_data.insert("memory".to_string(), Value::String(used_memory));

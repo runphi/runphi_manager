@@ -187,6 +187,31 @@ Notes:
 - Example boot configs: `target/demo_containers/linux/config.json`
   (initramfs), `config.file-disk.json`, `config.lvm.json`.
 
+### Jailhouse backend
+
+On Jailhouse every `os_var` but `"linux"` is a single image that `jailhouse
+cell load` puts into the cell (Linux cells are not implemented: refused). The
+cell's resources come from the platform files in `target/target_configs/`,
+installed as `/usr/share/runPHI/platform_info.toml` and `state.toml`:
+
+- an A53 cell gets the container's CPU quota (default 1 CPU) of the root
+  cell's CPUs and its memory limit (default 64 MB) of the free segments in
+  `state.toml`; `"net": "yes"` adds one of the free ivshmem devices
+  (`free_pci_devices_bdf`), `"none"` none
+- `"rpu_req": true` puts an R5 ELF (`inmate`) on a remote core (Omnivisor
+  fork). On a platform whose `platform_info.toml` describes the cores
+  (`[rcpu.<id>]`: TCMs and DDR region, e.g. the Kria's), the core is the one
+  whose memory holds every loadable segment of the ELF, as remoteproc loads
+  it at its link address, and the cell gets that core's TCMs and DDR region,
+  nothing from the free segments; an ELF outside every core's memory, or for
+  a core in use, is refused. Without `[rcpu.<id>]` sections the cell gets
+  the first free core and memory of the free segments.
+
+A container whose cell cannot be made (resources, ELF, a configuration that
+does not compile, `jailhouse cell create`/`load` failing) is refused by
+`create` with the reason and leaves nothing taken; runPHI only shuts down or
+destroys the cells it made.
+
 ## Pointers into the code
 
 - OCI dispatch: [rust_runphi/crates/runphi/src/main.rs](../rust_runphi/crates/runphi/src/main.rs)

@@ -93,9 +93,12 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
         let segments = free_segments.get_mut("segments").and_then(|s| s.as_array_mut());
         
         if let Some(segments) = segments {
-            // Add the new memory segment to the list
+            // Add the new memory segment to the list ("none": an R5 cell, whose
+            // memory is its core's region, not the pool's)
             if let Some(memory) = memory {
-                segments.push(Value::String(memory));
+                if memory != "none" {
+                    segments.push(Value::String(memory));
+                }
             }
 
             // Parse segments into tuples of (start, end)
@@ -115,25 +118,20 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
                 })
                 .collect();
 
-            // Sort segments by their start address
+            // Sort segments by their start address (empty ones dropped)
+            parsed_segments.retain(|&(start, end)| start < end);
             parsed_segments.sort_by_key(|&(start, _)| start);
 
             // Merge contiguous segments
-            let mut merged_segments = Vec::new();
-            let mut current_segment = parsed_segments[0];
-
-            for &(start, end) in &parsed_segments[1..] {
-                if current_segment.1 == start {
+            let mut merged_segments: Vec<(u64, u64)> = Vec::new();
+            for (start, end) in parsed_segments {
+                match merged_segments.last_mut() {
                     // If contiguous, extend the current segment
-                    current_segment.1 = end;
-                } else {
-                    // Otherwise, save the current segment and start a new one
-                    merged_segments.push(current_segment);
-                    current_segment = (start, end);
+                    Some(current) if current.1 == start => current.1 = end,
+                    // Otherwise, start a new one
+                    _ => merged_segments.push((start, end)),
                 }
             }
-            // Add the last segment
-            merged_segments.push(current_segment);
 
             // Convert merged segments back to string format and update `segments`
             *segments = merged_segments
@@ -191,6 +189,55 @@ fn destroy_update_state(containerid: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// Marker in crundir: this container's create made the cell. runPHI only shuts
+// down or destroys a cell it made: a cell of the same name made by someone
+// else (jailhouse cell create by hand) is left alone.
+const CELL_MARKER: &str = "cell";
+
+fn owns_cell(containerid: &str, crundir: &Path) -> bool {
+    crundir.join(CELL_MARKER).exists() && cell_exists(containerid)
+}
+
+// Is there a Jailhouse cell with this name? (none when Jailhouse is disabled)
+fn cell_exists(name: &str) -> bool {
+    let Ok(cells) = fs::read_dir("/sys/devices/jailhouse/cells") else {
+        return false;
+    };
+    cells.filter_map(|cell| cell.ok()).any(|cell| {
+        fs::read_to_string(cell.path().join("name"))
+            .map(|n| n.trim() == name)
+            .unwrap_or(false)
+    })
+}
+
+// Name, in /lib/firmware, of the link to a container's R5 program: one per
+// container (container ids are at most 24 characters, the driver takes names
+// of up to 31), recorded in crundir/firmware so that destroyguest removes it.
+fn firmware_link_name(containerid: &str) -> String {
+    format!("runphi-{}", containerid)
+}
+
+fn remove_firmware_link(crundir: &Path) {
+    if let Ok(name) = fs::read_to_string(crundir.join("firmware")) {
+        let link = Path::new(FIRMWARE_DIR).join(name.trim());
+        if fs::symlink_metadata(&link).is_ok() {
+            let _ = fs::remove_file(&link);
+        }
+    }
+}
+
+// Send SIGTERM to the container's caronte, if it was started (its pid is in the
+// file named by crundir/pidfile).
+fn kill_caronte(crundir: &Path) {
+    let pid = fs::read_to_string(crundir.join("pidfile"))
+        .ok()
+        .and_then(|pidfile| fs::read_to_string(pidfile.trim()).ok())
+        .and_then(|pid| pid.trim().parse::<i32>().ok());
+    if let Some(pid) = pid {
+        let _ = nix::sys::signal::kill(Pid::from_raw(pid), Signal::SIGTERM);
+    }
+}
+
 pub fn startguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
     logging::log_message(logging::Level::Debug, format!("Start guest for cell with id {}", containerid).as_str());
     //let start = timer::capture(); //TIMELINE
@@ -202,54 +249,34 @@ pub fn startguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error
         let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "start", containerid);
         logging::log_message(logging::Level::Debug, format!("Starting cell with id {}", containerid).as_str());
         logging::log_message(logging::Level::Trace, format!("Starting cell by calling: {}", &command_str).as_str());
-        
-        /* let _ = Command::new(JAILHOUSE_PATH)
-            .arg("cell")
-            .arg("start")
-            .arg(containerid)
-            .output()
-            .expect("Failed to execute command"); */
-
-        // Spawn the command to start the jailhouse cell
-        // This allows the process to run asynchronously
-        // and we can continue without blocking the main thread.
-        // This is useful if you want to log the start time and continue with other tasks.
-        let mut start_process = Command::new(JAILHOUSE_PATH)
-            .arg("cell")
-            .arg("start")
-            .arg(containerid)
-            .spawn()?;
-
-        // Log immediately - this captures the moment the cell creation begins
-        //let end = timer::capture();
-        //timer::log_elapsed(start, end, "Cell start")?;
-        //timer::log_phase_at(end, "Cell started")?;  // Uses the same end timestamp
-
-        // Wait for jailhouse cell start to finish
-        start_process.wait()?;
+        run_command(
+            Command::new(JAILHOUSE_PATH)
+                .arg("cell")
+                .arg("start")
+                .arg(containerid),
+        )?;
     }
-    
+
     Ok(())
 }
 
+// Shut the cell down (if there is one) and stop caronte. A container whose
+// create failed has no cell: nothing to shut down.
 pub fn stopguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
 
     //let start = timer::capture(); //TIMELINE
 
-    let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "shutdown", containerid);
-    logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
-    run_command(
-        Command::new(JAILHOUSE_PATH)
-            .arg("cell")
-            .arg("shutdown")
-            .arg(containerid),
-    )?;
-    // Now kill caronte
-    let pathtokill = std::fs::read_to_string(crundir.join("pidfile"))?;
-    let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
-    let pidk: i32 = pidtokill.trim().parse()?;
-    let pid = Pid::from_raw(pidk);
-    let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
+    if owns_cell(containerid, crundir) {
+        let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "shutdown", containerid);
+        logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
+        run_command(
+            Command::new(JAILHOUSE_PATH)
+                .arg("cell")
+                .arg("shutdown")
+                .arg(containerid),
+        )?;
+    }
+    kill_caronte(crundir);
 
     //let end = timer::capture(); //TIMELINE
     //timer::log_elapsed(start, end, "Cell stop")?;
@@ -257,30 +284,32 @@ pub fn stopguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
+// Destroy the cell and give its resources back. It can be repeated and works on
+// whatever a failed create left: a missing cell, state entry, pidfile or link
+// is skipped. Only a cell that exists but cannot be destroyed is an error, and
+// then its resources stay taken in state.toml.
 //TODO: We need to implement a way to deassign the pci_devices (ivshmem) from a cell when we destroy it
 //For now I'll put it here but it should be something that the jailhouse driver offers just as with the cpus
 pub fn destroyguest(containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>> {
 
     //let start = timer::capture(); //TIMELINE
 
-    let _ = destroy_update_state(containerid);
+    if owns_cell(containerid, crundir) {
+        let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "destroy", containerid);
+        logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
+        run_command(
+            Command::new(JAILHOUSE_PATH)
+                .arg("cell")
+                .arg("destroy")
+                .arg(containerid),
+        )?;
+    }
 
-    // Execute the command to destroy the jailhouse cell using the name of the cell containerid
-    let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "destroy", containerid);
-    logging::log_message(logging::Level::Trace, format!("The command is: {}", &command_str).as_str());
-    run_command(
-        Command::new(JAILHOUSE_PATH)
-            .arg("cell")
-            .arg("destroy")
-            .arg(containerid),
-    )?;
-
-    // Now kill caronte
-    let pathtokill = std::fs::read_to_string(crundir.join("pidfile"))?;
-    let pidtokill = std::fs::read_to_string(pathtokill.trim())?;
-    let pidk: i32 = pidtokill.trim().parse()?;
-    let pid = Pid::from_raw(pidk);
-    let _ = nix::sys::signal::kill(pid, Signal::SIGTERM);
+    if let Err(e) = destroy_update_state(containerid) {
+        logging::log_message(logging::Level::Debug, format!("No resources to give back for {}: {}", containerid, e).as_str());
+    }
+    remove_firmware_link(crundir);
+    kill_caronte(crundir);
     fs::remove_dir_all(crundir).ok();
 
     //let end = timer::capture(); //TIMELINE
@@ -294,9 +323,25 @@ pub fn cleanup(_containerid: &str, crundir: &Path) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
+// Undo what create did before `err`: destroy the cell if it exists, give the
+// resources back, remove the firmware link. The frontend removes crundir.
+fn abort_create(containerid: &str, crundir: &Path, err: Box<dyn Error>) -> Box<dyn Error> {
+    logging::log_message(logging::Level::Error, format!("Creating {} failed, undoing it: {}", containerid, err).as_str());
+    if owns_cell(containerid, crundir) {
+        let _ = run_command(Command::new(JAILHOUSE_PATH).arg("cell").arg("destroy").arg(containerid));
+    }
+    let _ = destroy_update_state(containerid);
+    remove_firmware_link(crundir);
+    err
+}
+
 // Create spawns a process, caronte, that is required to keep the container open. Caronte is set as
 // container init, and as long as containerd sees that is alive, the container is kept open
 pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
+    create_cell(fc, ic).map_err(|e| abort_create(&fc.containerid, &fc.crundir, e))
+}
+
+fn create_cell(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<(), Box<dyn Error>> {
 
     //let start: u32 = timer::capture(); //TIMELINE
 
@@ -310,105 +355,60 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         // Here we have to wait both commands to return to guarantee ordering, and then we start caronte
         // caronte is needed to keep a pid alive expected by containerd before giving the start
 
-        //TODO: absolute path NOPE
         logging::log_message(logging::Level::Debug, format!("Creating cell on cellfile {}", cellfile.display()).as_str());
-        let command_str = format!("{} {} {} {}", JAILHOUSE_PATH, "cell", "create", cellfile.display());
-        logging::log_message(logging::Level::Trace, format!("Creating cell by calling: {}", &command_str).as_str());
-        Command::new(JAILHOUSE_PATH)
-            .arg("cell")
-            .arg("create")
-            .arg(&cellfile)
-            .output()?;
-        
-        logging::log_message(logging::Level::Debug, format!("Creating cell with id {}", &fc.containerid).as_str());  
+        run_command(Command::new(JAILHOUSE_PATH).arg("cell").arg("create").arg(&cellfile))?;
+        fs::write(fc.crundir.join(CELL_MARKER), &fc.containerid)?;
+
+        logging::log_message(logging::Level::Debug, format!("Creating cell with id {}", &fc.containerid).as_str());
         logging::log_message(logging::Level::Trace, format!("The parameter ic.inmate is {}", &ic.inmate).as_str());
-        
-        //If an RPU is requested, use the .elf with the -r argument for RPU
-        // Omnivisor requires a the elf to be in /lib/firmware as per current version. 
-        // We create a symlink (overwriting if already exisitng) to avoid file copy
-        // Then the rcpu allotted to the container is retrieved and passed 
-        // to omnivisor during the cell load. Notice that here onivisor takes care 
-        // of placing the binary in the appropriate memory area.
+
+        // An R5 program: the Omnivisor loads it from /lib/firmware onto the rCPU
+        // allotted to the container (in the state file), through remoteproc,
+        // at its link address. A per-container link avoids copying it.
         if ic.rpu_req {
-            let inmate_name = ic.inmate.rsplit('/').next().unwrap_or("");
-            let sym_destination = Path::new(FIRMWARE_DIR).join(inmate_name);
+            let link_name = firmware_link_name(&fc.containerid);
+            let sym_destination = Path::new(FIRMWARE_DIR).join(&link_name);
             logging::log_message(logging::Level::Trace, format!("The symdest is {}", sym_destination.display()).as_str());
-           
+
             // Get the dynamic rcpus value from the state file.
             let rcpu = get_rcpu_for_container(&fc.containerid)?;
-            
+
             if fs::symlink_metadata(&sym_destination).is_ok() {
-                if let Err(e) = fs::remove_file(&sym_destination) {
-                    logging::log_message(logging::Level::Error, format!("Removing existing symlink failed for cell with id {}, error {}", &fc.containerid, e).as_str());            
-                    return Err(Box::new(e))
-                }
+                fs::remove_file(&sym_destination)?;
             }
+            symlink(&ic.inmate, &sym_destination)
+                .map_err(|e| format!("cannot link {} to {}: {}", sym_destination.display(), ic.inmate, e))?;
+            fs::write(fc.crundir.join("firmware"), &link_name)?;
 
-            match symlink(&ic.inmate, &sym_destination){
-                Ok(_) => logging::log_message(logging::Level::Debug, format!("Symlink created for cell with id {}", &fc.containerid).as_str()),
-                Err(e) => {logging::log_message(logging::Level::Error, format!("Symlink creation failed for cell with id {}, erorr {}", &fc.containerid, e).as_str()); 
-                return Err(Box::new(e))},            
-            }
-                    
-            // Create the command but not run it, first log it. Then run it and capture its output.
-            let mut cmd_load = Command::new(JAILHOUSE_PATH);
-            cmd_load.arg("cell").arg("load")
-                .arg(&fc.containerid)
-                .arg("-r").arg(inmate_name)   
-                .arg(&rcpu);
-                
-            let command_str: Vec<String> = std::iter::once(cmd_load.get_program().to_string_lossy().to_string())
-               .chain(cmd_load.get_args().map(|arg| arg.to_string_lossy().to_string())).collect();
-            
-            logging::log_message(logging::Level::Trace, format!("Loading cell by calling: {}", command_str.join(" ")).as_str());
-            
-            let output = cmd_load.output() // This returns a std::io::Result<Output>
-                .map_err(|e| {
-                    // If spawning the process fails altogether (e.g. not found),
-                    // log an error and propagate the error upward.
-                    logging::log_message(
-                        logging::Level::Error,
-                        &format!("Failed to spawn jailhouse command: {}", e),
-                    );
-                    e
-                })?;
-
-            // Log the command’s exit status, stdout, and stderr.
-            logging::log_message(logging::Level::Trace, &format!("STATUS: {:?}", output.status));
-            logging::log_message(logging::Level::Trace, &format!("STDOUT: {}", String::from_utf8_lossy(&output.stdout)));
-            logging::log_message(logging::Level::Trace, &format!("STDERR: {}", String::from_utf8_lossy(&output.stderr)));
-
-            // Check if the jailhouse command itself returned a non-zero exit code.
-            if !output.status.success() {
-                logging::log_message(
-                    logging::Level::Error,
-                    &format!("jailhouse cell load failed (status code: {:?})", output.status),
-                );
-                // You can decide to return an error here if you want to abort on failure.
-            }
+            logging::log_message(
+                logging::Level::Trace,
+                format!("Loading cell by calling: {} cell load {} -r {} {}", JAILHOUSE_PATH, fc.containerid, link_name, rcpu).as_str(),
+            );
+            run_command(
+                Command::new(JAILHOUSE_PATH)
+                    .arg("cell")
+                    .arg("load")
+                    .arg(&fc.containerid)
+                    .arg("-r")
+                    .arg(&link_name)
+                    .arg(&rcpu),
+            )?;
 
         //If an RPU is not required, we load the .bin onto an APU, remapping the first available address
         //In this case we might want to specify the virtual load address to the hypervisor, so that
-        //the memory cna be properly set. We create the load command, log it, and finally run it
-        //retrieving the output.
+        //the memory can be properly set.
         } else {
             logging::log_message(logging::Level::Debug, format!("Loading cell with id {}", &fc.containerid).as_str());
-            
-            let mut cmd_load = Command::new(JAILHOUSE_PATH); 
+
+            let mut cmd_load = Command::new(JAILHOUSE_PATH);
             cmd_load.arg("cell").arg("load").arg(&fc.containerid).arg(&ic.inmate);
 
             // Append the starting vaddress when present in the JSON
             //TODO: MANAGE OMNIVISOR CONTAINERS APU
             if !ic.starting_vaddress.is_empty() {
                 cmd_load.arg("-a").arg(&ic.starting_vaddress);
-            } 
-            
-            let command_str: Vec<String> = std::iter::once(cmd_load.get_program().to_string_lossy().to_string())
-               .chain(cmd_load.get_args().map(|arg| arg.to_string_lossy().to_string())).collect();
-            
-            logging::log_message(logging::Level::Trace, format!("Loading cell by calling: {}", command_str.join(" ")).as_str());
-
-            cmd_load.output()?;
+            }
+            run_command(&mut cmd_load)?;
         }
 
         //let caronte_command = format!("echo \"caronte is listening\"");
@@ -419,10 +419,12 @@ pub fn createguest(fc: &f2b::FrontendConfig, ic: &f2b::ImageConfig) -> Result<()
         let mut caronte = Command::new(CARONTE_BIN);
         caronte.arg(caronte_command).arg(&fc.containerid);
         fc.enter_network_namespace(&mut caronte)?;
-        let start_output = caronte.spawn()?;
-        let pid = start_output.id();
-        std::fs::write(&fc.pidfile, format!("{}", pid))?;        
-    
+        let mut child = caronte.spawn()?;
+        if let Err(e) = std::fs::write(&fc.pidfile, format!("{}", child.id())) {
+            let _ = child.kill();
+            return Err(e.into());
+        }
+
     } else if ic.os_var == "linux" {
         // Here we manage separately the (unlikely) linux case due to a dedicated jh command
         // Commands only for Linux aarch64

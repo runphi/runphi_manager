@@ -26,8 +26,12 @@ pub fn devconfig(c: &mut configGenerator::BackendConfig) -> Result<(), Box<dyn E
     let file_path = Path::new(WORKPATH).join("platform_info.toml");
     let templates_map = get_templates_map(); // Get all templates
     
-    // Get minimum BDF from c.bdf
-    let bdf_used = c.bdf.iter().min().ok_or("No available BDFs")?;
+    // Get minimum BDF from c.bdf (a cell without network has no PCI device)
+    let bdf_used = if c.net == "none" {
+        0
+    } else {
+        *c.bdf.iter().min().ok_or("no free ivshmem device (PCI BDF) for a cell with network")?
+    };
 
     // Read device configurations from the platform TOML file
     let config: toml::Value = toml::from_str(&std::fs::read_to_string(&file_path)?)?;
