@@ -1,0 +1,72 @@
+[mem_regions]
+regions = ["IVSHMEM_TEMPLATE", "UART_TEMPLATE", "TCMA_TEMPLATE", "TCMB_TEMPLATE", "RAM_TEMPLATE", "COMM_REGION_TEMPLATE"]
+
+# vpci_irq_base: the hypervisor raises the INTx of a cell's ivshmem device at
+# 32 + vpci_irq_base + pin - 1, pin = (device & 3) + 1: 00:01.0 -> 141,
+# 00:02.0 -> 142 (as the fork's zynqmp-kv260-linux-demo.cell; the root cell's
+# own are 137 and 138). runPHI lets the cell's interrupt through and ignores
+# ivshmem_pin below.
+# The KR260 (kr260-jailhouse in environment_builder) has the same K26 SOM and a
+# root cell with the KV260's layout: this file is kria_platform_info.toml.
+[jailhouse_preamble]
+preamble = "ULTRASCALE_PREAMBLE"
+vpci_irq_base = "108"
+
+[IVSHMEM_TEMPLATE]
+address = "0x07e000000" #"0x060000000" was before
+
+[UART_TEMPLATE]
+phys_start = "0xff010000"
+virt_start = "0xff010000"
+size = "0x1000"
+
+[TCMA_TEMPLATE]
+phys_start = "0xffe00000"
+virt_start = "0xffe00000"
+size = "0x00010000"
+
+[TCMB_TEMPLATE]
+phys_start = "0xffe20000"
+virt_start = "0xffe20000"
+size = "0x00010000"
+
+# The RAM of an A53 cell: phys_start and size come from the free segments of
+# state.toml (runphi@4f000000 in the device tree, 256 MB); an R5 cell gets its
+# core's DDR region instead (below)
+[RAM_TEMPLATE]
+phys_start = "0x4f000000"
+virt_start = "0"
+size = "0x8000000"
+
+[COMM_REGION_TEMPLATE]
+# No additional parameters
+
+[devices]
+devs = ["IRQ_CHIP_BOARD_TEMPLATE", "PCI_DEVICE_TEMPLATE"]
+
+[IRQ_CHIP_BOARD_TEMPLATE]
+gic_address = "0xf9010000"
+uart_pin = "33"
+ivshmem_pin = "146"
+
+[PCI_DEVICE_TEMPLATE]
+ivshmem_bdf = "1"
+
+# The R5 cores: their TCMs and their DDR region, the memory-region of the core
+# in the device tree (rproc@3ed00000, rproc@3ad00000), which is where remoteproc
+# loads their programs and so where these are linked. An R5 cell gets its
+# core's TCMs and DDR region, chosen from the addresses of its ELF; an A53 cell
+# gets neither.
+[rcpu.0]
+tcma = "0xffe00000"
+tcmb = "0xffe20000"
+tcm_size = "0x10000"
+ddr_start = "0x3ed00000"
+ddr_size = "0x8000000"
+
+[rcpu.1]
+tcma = "0xffe90000"
+tcmb = "0xffeb0000"
+tcm_size = "0x10000"
+ddr_start = "0x3ad00000"
+ddr_size = "0x4000000"
