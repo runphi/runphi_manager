@@ -66,11 +66,11 @@ pub fn install() -> std::io::Result<()> {
     logging::timer::initialize_with(Box::new(src))
 }
 
-#[cfg(test)]
+// The counter is only read on aarch64: elsewhere both methods return 0.
+#[cfg(all(test, target_arch = "aarch64"))]
 mod tests {
     use super::*;
 
-    #[cfg(target_arch = "aarch64")]
     #[test]
     fn test_ticks_advance() {
         let t = JailhouseTickSource::new().unwrap();
@@ -81,7 +81,6 @@ mod tests {
     }
 
     // 100 ms of sleep must convert to about 100 ms with the reported frequency.
-    #[cfg(target_arch = "aarch64")]
     #[test]
     fn test_frequency_converts_ticks_to_time() {
         let t = JailhouseTickSource::new().unwrap();
